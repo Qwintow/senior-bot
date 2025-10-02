@@ -27,7 +27,17 @@ const REPUTATION_SYSTEM = {
 // Конфигурация обратной связи
 const FEEDBACK_CONFIG = {
   channelId: -1002706262195, // ID приватного канала для обратной связи
-  adminIds: [404870437] // ID администраторов (можно добавить несколько через запятую)
+  adminIds: [404870437] // ID администраторов
+};
+
+// Конфигурация вопросов
+const QUESTION_CONFIG = {
+  maxAnswers: 5, // Максимум ответов на вопрос
+  activeDays: 7, // Дней активности вопроса
+  maxNewUserQuestions: 3, // Максимум вопросов для нового пользователя
+  dailyDigestLimit: 2, // Максимум вопросов в ежедневной рассылке
+  minAnswersForCompletion: 3, // Минимум ответов для автоматического завершения
+  maxQuestionsPerDay: 3 // Максимум вопросов в день на пользователя
 };
 
 // Категории экспертизы
@@ -147,6 +157,8 @@ db.serialize(() => {
     text TEXT,
     category TEXT,
     status TEXT DEFAULT 'active',
+    answer_count INTEGER DEFAULT 0,
+    expires_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
   
@@ -236,27 +248,26 @@ async function formatUserProfile(userId) {
   return `\n\n👤 *Совет от:* ${user.age || '?'} лет, ${user.gender}, ${user.occupation || 'сфера не указана'} ${level.badge} ${level.name}`;
 }
 
-const userStates = {};
-
-// Защита от двойных нажатий
-const processingCallbacks = new Set();
-
-// Главное меню
-function showMainMenu(chatId) {
-  bot.sendMessage(chatId, `🎯 *Главное меню "Спроси у старшего"*\n\nВыберите действие:`, {
-    parse_mode: 'Markdown',
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: '📝 Задать вопрос', callback_data: 'ask_question' }],
-        [{ text: '💡 Ответить на вопросы', callback_data: 'browse_questions' }],
-        [{ text: '👤 Мой профиль', callback_data: 'my_profile' }],
-        [{ text: '📢 О проекте', callback_data: 'about_project' }],
-        [{ text: '📮 Обратная связь', callback_data: 'feedback' }],
-        [{ text: '⚙️ Настройки', callback_data: 'settings' }],
-        [{ text: '📜 Правила сервиса', callback_data: 'show_rules' }]
-      ]
+// Функция проверки и обновления статуса вопроса
+async function updateQuestionStatus(questionId) {
+  try {
+    // Получаем текущее количество ответов
+    const answerCount = await dbGet(
+      'SELECT COUNT(*) as count FROM answers WHERE question_id = ?', 
+      [questionId]
+    );
+    
+    if (answerCount.count >= QUESTION_CONFIG.minAnswersForCompletion) {
+      // Если набрано достаточно ответов - закрываем вопрос
+      await dbRun(
+        'UPDATE questions SET status = "completed" WHERE id = ?', 
+        [questionId]
+      );
+      console.log(`✅ Вопрос ${questionId} завершен (${answerCount.count} ответов)`);
     }
-  });
+  } catch (error) {
+    console.error('❌ Ошибка обновления статуса вопроса:', error);
+  }
 }
 
 // Функция "О проекте"
@@ -382,6 +393,208 @@ async function processFeedback(userId, feedbackType, text) {
   }
 }
 
+// Функция статистики для администратора
+async function showAdminStats(chatId) {
+  try {
+    // Проверяем, является ли пользователь администратором
+    if (!FEEDBACK_CONFIG.adminIds.includes(chatId)) {
+      await bot.sendMessage(chatId, '❌ У вас нет доступа к этой функции.');
+      return;
+    }
+
+    // Собираем статистику
+    const totalUsers = await dbGet('SELECT COUNT(*) as count FROM users');
+    const activeUsers = await dbGet('SELECT COUNT(*) as count FROM users WHERE is_resting = 0');
+    const restingUsers = await dbGet('SELECT COUNT(*) as count FROM users WHERE is_resting = 1');
+    
+    const totalQuestions = await dbGet('SELECT COUNT(*) as count FROM questions');
+    const activeQuestions = await dbGet('SELECT COUNT(*) as count FROM questions WHERE status = "active" AND expires_at > datetime("now")');
+    const completedQuestions = await dbGet('SELECT COUNT(*) as count FROM questions WHERE status = "completed"');
+    const expiredQuestions = await dbGet('SELECT COUNT(*) as count FROM questions WHERE status = "active" AND expires_at <= datetime("now")');
+    
+    const totalAnswers = await dbGet('SELECT COUNT(*) as count FROM answers');
+    const totalRatings = await dbGet('SELECT COUNT(*) as count FROM answer_ratings');
+    
+    const todayQuestions = await dbGet('SELECT COUNT(*) as count FROM questions WHERE created_at > datetime("now", "-1 day")');
+    const todayAnswers = await dbGet('SELECT COUNT(*) as count FROM answers WHERE created_at > datetime("now", "-1 day")');
+    
+    // Топ пользователей по репутации
+    const topUsers = await dbAll(`
+      SELECT id, reputation_points, answers_count, questions_count 
+      FROM users 
+      ORDER BY reputation_points DESC 
+      LIMIT 5
+    `);
+    
+    // Популярные категории
+    const popularCategories = await dbAll(`
+      SELECT category, COUNT(*) as count 
+      FROM questions 
+      GROUP BY category 
+      ORDER BY count DESC 
+      LIMIT 5
+    `);
+
+    // Формируем отчет
+    let statsText = `📊 *СТАТИСТИКА СИСТЕМЫ*\n\n`;
+    
+    statsText += `👥 *Пользователи:*\n`;
+    statsText += `• Всего: ${totalUsers.count}\n`;
+    statsText += `• Активных: ${activeUsers.count}\n`;
+    statsText += `• В режиме отдыха: ${restingUsers.count}\n\n`;
+    
+    statsText += `📝 *Вопросы:*\n`;
+    statsText += `• Всего: ${totalQuestions.count}\n`;
+    statsText += `• Активных: ${activeQuestions.count}\n`;
+    statsText += `• Завершенных: ${completedQuestions.count}\n`;
+    statsText += `• Просроченных: ${expiredQuestions.count}\n`;
+    statsText += `• Сегодня: ${todayQuestions.count}\n\n`;
+    
+    statsText += `💡 *Ответы и оценки:*\n`;
+    statsText += `• Всего ответов: ${totalAnswers.count}\n`;
+    statsText += `• Всего оценок: ${totalRatings.count}\n`;
+    statsText += `• Ответов сегодня: ${todayAnswers.count}\n\n`;
+    
+    statsText += `🏆 *Топ пользователей:*\n`;
+    topUsers.forEach((user, index) => {
+      const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+      statsText += `${medals[index]} ID:${user.id} - ${user.reputation_points} очков (${user.answers_count} ответов, ${user.questions_count} вопросов)\n`;
+    });
+    
+    statsText += `\n📈 *Популярные категории:*\n`;
+    popularCategories.forEach((cat, index) => {
+      statsText += `${index + 1}. ${cat.category}: ${cat.count} вопросов\n`;
+    });
+    
+    statsText += `\n⏰ *Обновлено:* ${new Date().toLocaleString('ru-RU')}`;
+
+    await bot.sendMessage(chatId, statsText, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🔄 Обновить статистику', callback_data: 'admin_stats' }],
+          [{ text: '📊 Детальная статистика', callback_data: 'admin_detailed_stats' }],
+          [{ text: '↩️ На главную', callback_data: 'main_menu' }]
+        ]
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Ошибка при получении статистики:', error);
+    await bot.sendMessage(chatId, '❌ Ошибка при получении статистики.');
+  }
+}
+
+// Детальная статистика
+async function showDetailedStats(chatId) {
+  try {
+    if (!FEEDBACK_CONFIG.adminIds.includes(chatId)) {
+      await bot.sendMessage(chatId, '❌ У вас нет доступа к этой функции.');
+      return;
+    }
+
+    // Распределение по возрастам
+    const ageStats = await dbAll(`
+      SELECT 
+        CASE 
+          WHEN age < 20 THEN 'до 20'
+          WHEN age BETWEEN 20 AND 29 THEN '20-29'
+          WHEN age BETWEEN 30 AND 39 THEN '30-39' 
+          WHEN age BETWEEN 40 AND 49 THEN '40-49'
+          WHEN age >= 50 THEN '50+'
+          ELSE 'не указан'
+        END as age_group,
+        COUNT(*) as count
+      FROM users 
+      GROUP BY age_group
+      ORDER BY count DESC
+    `);
+
+    // Распределение по полу
+    const genderStats = await dbAll(`
+      SELECT gender, COUNT(*) as count 
+      FROM users 
+      GROUP BY gender
+    `);
+
+    // Вопросы по дням (последние 7 дней)
+    const questionsByDay = await dbAll(`
+      SELECT 
+        date(created_at) as day,
+        COUNT(*) as count
+      FROM questions 
+      WHERE created_at > datetime('now', '-7 days')
+      GROUP BY day
+      ORDER BY day DESC
+    `);
+
+    let detailedText = `📈 *ДЕТАЛЬНАЯ СТАТИСТИКА*\n\n`;
+    
+    detailedText += `👥 *Распределение по возрастам:*\n`;
+    ageStats.forEach(stat => {
+      detailedText += `• ${stat.age_group}: ${stat.count} пользователей\n`;
+    });
+    
+    detailedText += `\n🚻 *Распределение по полу:*\n`;
+    genderStats.forEach(stat => {
+      detailedText += `• ${stat.gender}: ${stat.count}\n`;
+    });
+    
+    detailedText += `\n📅 *Вопросы за последние 7 дней:*\n`;
+    questionsByDay.forEach(stat => {
+      detailedText += `• ${stat.day}: ${stat.count} вопросов\n`;
+    });
+
+    await bot.sendMessage(chatId, detailedText, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📊 Основная статистика', callback_data: 'admin_stats' }],
+          [{ text: '↩️ На главную', callback_data: 'main_menu' }]
+        ]
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Ошибка при получении детальной статистики:', error);
+  }
+}
+
+const userStates = {};
+
+// Защита от двойных нажатий
+const processingCallbacks = new Set();
+
+// Главное меню
+function showMainMenu(chatId) {
+  const isAdmin = FEEDBACK_CONFIG.adminIds.includes(chatId);
+  
+  const keyboard = [
+    [{ text: '📝 Задать вопрос', callback_data: 'ask_question' }],
+    [{ text: '💡 Ответить на вопросы', callback_data: 'browse_questions' }],
+    [{ text: '👤 Мой профиль', callback_data: 'my_profile' }],
+    [{ text: '📢 О проекте', callback_data: 'about_project' }],
+    [{ text: '📮 Обратная связь', callback_data: 'feedback' }]
+  ];
+
+  // Добавляем админ-кнопку только для администраторов
+  if (isAdmin) {
+    keyboard.push([{ text: '👑 Статистика (админ)', callback_data: 'admin_stats' }]);
+  }
+
+  keyboard.push(
+    [{ text: '⚙️ Настройки', callback_data: 'settings' }],
+    [{ text: '📜 Правила сервиса', callback_data: 'show_rules' }]
+  );
+
+  bot.sendMessage(chatId, `🎯 *Главное меню "Спроси у старшего"*\n\nВыберите действие:`, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: keyboard
+    }
+  });
+}
+
 // Приветственное сообщение
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
@@ -414,6 +627,17 @@ bot.on('callback_query', async (query) => {
   processingCallbacks.add(callbackKey);
   
   try {
+    // Админ-статистика
+    if (data === 'admin_stats') {
+      await showAdminStats(chatId);
+      return;
+    }
+
+    if (data === 'admin_detailed_stats') {
+      await showDetailedStats(chatId);
+      return;
+    }
+
     // Уровень 2 - подробности о сервисе
     if (data === 'learn_more') {
       await bot.editMessageText(`💫 *Что такое "Спроси у старшего"?*\n\nЭто безопасное пространство, где:\n• 🤝 *Вы можете анонимно спросить* - о карьере, отношениях, финансах, воспитании детей\n• 💡 *Получить несколько мнений* - ваш вопрос увидят разные опытные люди\n• 🧠 *Делиться мудростью* - помогать другим своим опытом\n\n*Примеры реальных вопросов:*\n"Как сменить профессию в 35 лет?"\n"Как наладить отношения с подростком?"\n"Стоит ли брать ипотеку в текущей ситуации?"\n\n*Как это работает:*\n1. Задаете вопрос → выбираете категорию\n2. Вопрос получают несколько "Старших" из этой сферы\n3. Вы получаете 3-5 разных ответов с мнениями\n4. Можете оценить полезные советы\n\n🔒 *Полная анонимность гарантирована*`, {
@@ -1048,9 +1272,23 @@ async function toggleRestMode(chatId) {
 // Обработка вопроса
 async function processQuestion(askerId, questionText, category) {
   try {
+    // Проверяем лимит вопросов в день
+    const todayQuestions = await dbGet(
+      'SELECT COUNT(*) as count FROM questions WHERE user_id = ? AND created_at > datetime("now", "-1 day")',
+      [askerId]
+    );
+    
+    if (todayQuestions.count >= QUESTION_CONFIG.maxQuestionsPerDay) {
+      await bot.sendMessage(askerId, 
+        `❌ Вы уже задали максимальное количество вопросов за сегодня (${QUESTION_CONFIG.maxQuestionsPerDay}). Попробуйте завтра!`,
+        { reply_markup: { inline_keyboard: [[{ text: '↩️ На главную', callback_data: 'main_menu' }]] } }
+      );
+      return;
+    }
+    
     // Сохраняем вопрос
     const result = await dbRun(
-      'INSERT INTO questions (user_id, text, category) VALUES (?, ?, ?)',
+      'INSERT INTO questions (user_id, text, category, expires_at) VALUES (?, ?, ?, datetime("now", "+7 days"))',
       [askerId, questionText, category]
     );
     
@@ -1098,7 +1336,7 @@ async function processQuestion(askerId, questionText, category) {
   }
 }
 
-// Показ доступных вопросов - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Показ доступных вопросов
 async function showAvailableQuestions(chatId) {
   const user = await dbGet('SELECT expertises FROM users WHERE id = ?', [chatId]);
   
@@ -1110,20 +1348,21 @@ async function showAvailableQuestions(chatId) {
   const expertises = user.expertises.split(', ');
   const placeholders = expertises.map(() => '?').join(', ');
   
-  // ИСПРАВЛЕННЫЙ ЗАПРОС - правильно фильтрует отвеченные вопросы
   const questions = await dbAll(`
     SELECT q.id, q.text, q.category, u.age, u.gender, u.occupation 
     FROM questions q 
     LEFT JOIN users u ON q.user_id = u.id 
     WHERE q.category IN (${placeholders}) 
     AND q.status = 'active' 
+    AND q.expires_at > datetime('now')
+    AND q.answer_count < ?
     AND q.user_id != ?
     AND q.id NOT IN (
       SELECT question_id FROM answers WHERE user_id = ?
     )
     ORDER BY q.created_at DESC 
     LIMIT 10
-  `, [...expertises, chatId, chatId]);
+  `, [...expertises, QUESTION_CONFIG.maxAnswers, chatId, chatId]);
   
   if (questions.length === 0) {
     await bot.sendMessage(chatId, '🤔 Пока нет новых вопросов в ваших категориях. Загляните позже!', {
@@ -1150,7 +1389,7 @@ async function showAvailableQuestions(chatId) {
   }
 }
 
-// Обработка ответа
+// Обработка ответа - ИСПРАВЛЕННАЯ ВЕРСИЯ
 async function processAnswer(userId, questionId, answerText) {
   try {
     // Сохраняем ответ
@@ -1161,6 +1400,12 @@ async function processAnswer(userId, questionId, answerText) {
     
     // Увеличиваем счетчик ответов
     await dbRun('UPDATE users SET answers_count = answers_count + 1 WHERE id = ?', [userId]);
+    
+    // Увеличиваем счетчик ответов на вопросе
+    await dbRun('UPDATE questions SET answer_count = answer_count + 1 WHERE id = ?', [questionId]);
+    
+    // Проверяем, не пора ли закрыть вопрос
+    await updateQuestionStatus(questionId);
     
     // Получаем информацию о вопросе и спрашивающем
     const question = await dbGet(`
@@ -1174,22 +1419,31 @@ async function processAnswer(userId, questionId, answerText) {
       // Получаем профиль отвечающего для форматирования
       const answererProfile = await formatUserProfile(userId);
       
-      // Отправляем ответ спрашивающему
-      await bot.sendMessage(question.user_id, `💫 *Получен ответ на ваш вопрос:*\n\n${answerText}${answererProfile}\n\n*Ваш вопрос:* "${question.text}"`, {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: '🙏 Спасибо', callback_data: `rate_${result.id}_thanks` },
-              { text: '👍 Полезно', callback_data: `rate_${result.id}_useful` }
-            ],
-            [
-              { text: '👌 Неплохо', callback_data: `rate_${result.id}_average` },
-              { text: '🔥 Супер!', callback_data: `rate_${result.id}_super` }
+      // Сначала отправляем ответ
+      await bot.sendMessage(question.user_id, 
+        `💫 *Получен ответ на ваш вопрос:*\n\n${answerText}${answererProfile}\n\n*Ваш вопрос:* "${question.text}"`, 
+        { parse_mode: 'Markdown' }
+      );
+      
+      // Затем отдельным сообщением отправляем кнопки оценки (чтобы не протухали)
+      await bot.sendMessage(question.user_id,
+        `🎯 *Оцените полезность ответа:*`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '🙏 Спасибо', callback_data: `rate_${result.id}_thanks` },
+                { text: '👍 Полезно', callback_data: `rate_${result.id}_useful` }
+              ],
+              [
+                { text: '👌 Неплохо', callback_data: `rate_${result.id}_average` },
+                { text: '🔥 Супер!', callback_data: `rate_${result.id}_super` }
+              ]
             ]
-          ]
+          }
         }
-      });
+      );
     }
     
     await bot.sendMessage(userId, '✅ *Ваш ответ отправлен!* Спасибо за помощь сообществу! 🎉', {
@@ -1308,5 +1562,19 @@ setInterval(async () => {
     console.error('❌ Ошибка отправки напоминаний:', error);
   }
 }, 60000); // Каждую минуту (для теста)
+
+// Ежедневная очистка просроченных вопросов
+setInterval(async () => {
+  try {
+    const result = await dbRun(
+      `UPDATE questions SET status = 'expired' WHERE status = 'active' AND expires_at <= datetime('now')`
+    );
+    if (result.changes > 0) {
+      console.log(`✅ Автоматически закрыто ${result.changes} просроченных вопросов`);
+    }
+  } catch (error) {
+    console.error('❌ Ошибка при очистке просроченных вопросов:', error);
+  }
+}, 60 * 60 * 1000); // Каждый час
 
 console.log('🤖 Бот "Спроси у старшего" запущен со всеми функциями!');
