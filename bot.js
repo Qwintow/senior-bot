@@ -900,15 +900,17 @@ async function showAvailableQuestions(chatId) {
   const placeholders = expertises.map(() => '?').join(', ');
   
   const questions = await dbAll(`
-    SELECT q.id, q.text, q.category, u.age, u.gender, u.occupation 
+    SELECT DISTINCT q.id, q.text, q.category, u.age, u.gender, u.occupation 
     FROM questions q 
     LEFT JOIN users u ON q.user_id = u.id 
+    LEFT JOIN answers a ON q.id = a.question_id AND a.user_id = ?
     WHERE q.category IN (${placeholders}) 
     AND q.status = 'active' 
     AND q.user_id != ?
+    AND a.id IS NULL  -- Не показывать вопросы, на которые уже ответили
     ORDER BY q.created_at DESC 
     LIMIT 10
-  `, [...expertises, chatId]);
+  `, [...expertises, chatId, chatId]);
   
   if (questions.length === 0) {
     await bot.sendMessage(chatId, '🤔 Пока нет новых вопросов в ваших категориях. Загляните позже!', {
