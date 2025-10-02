@@ -24,6 +24,12 @@ const REPUTATION_SYSTEM = {
   }
 };
 
+// Конфигурация обратной связи
+const FEEDBACK_CONFIG = {
+  channelId: -1002706262195, // ID приватного канала для обратной связи
+  adminIds: [404870437] // ID администраторов (можно добавить несколько через запятую)
+};
+
 // Категории экспертизы
 const EXPERTISE_CATEGORIES = [
   '💼 Карьера и бизнес',
@@ -244,11 +250,136 @@ function showMainMenu(chatId) {
         [{ text: '📝 Задать вопрос', callback_data: 'ask_question' }],
         [{ text: '💡 Ответить на вопросы', callback_data: 'browse_questions' }],
         [{ text: '👤 Мой профиль', callback_data: 'my_profile' }],
+        [{ text: '📢 О проекте', callback_data: 'about_project' }],
+        [{ text: '📮 Обратная связь', callback_data: 'feedback' }],
         [{ text: '⚙️ Настройки', callback_data: 'settings' }],
         [{ text: '📜 Правила сервиса', callback_data: 'show_rules' }]
       ]
     }
   });
+}
+
+// Функция "О проекте"
+async function showAboutProject(chatId, messageId = null) {
+  const aboutText = `🌟 *О проекте "Спроси у старшего"*
+
+*🎯 Наша миссия:*
+Создать безопасное пространство, где каждый может получить мудрый совет от опытных людей по любым жизненным вопросам.
+
+*🤔 Для кого этот проект:*
+• Для тех, кто столкнулся с сложным выбором
+• Для тех, кому нужен взгляд со стороны
+• Для тех, кто хочет помочь другим своим опытом
+• Для тех, кто ценит анонимность и безопасность
+
+*💫 Что мы предлагаем:*
+• 🔒 *Полная анонимность* - никаких личных данных
+• 🧠 *Множество мнений* - ваш вопрос увидят разные эксперты  
+• 💡 *Практические советы* - от реальных людей с опытом
+• 🌱 *Система репутации* - находите самых helpful советчиков
+
+*📊 Как это работает:*
+1. Задаете вопрос → выбираете категорию
+2. Вопрос получают "Старшие" из этой сферы
+3. Вы получаете 3-5 разных ответов с мнениями
+4. Оцениваете самые полезные советы
+
+*🎭 Примеры вопросов:*
+• "Как сменить профессию в 35 лет?"
+• "Как наладить отношения с подростком?" 
+• "Стоит ли брать ипотеку в текущей ситуации?"
+• "Как справиться с выгоранием на работе?"
+
+*🤝 Присоединяйтесь к сообществу!*
+Здесь ваш опыт может изменить чью-то жизнь к лучшему.`;
+
+  if (messageId) {
+    await bot.editMessageText(aboutText, {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🚀 Начать пользоваться', callback_data: 'main_menu' }],
+          [{ text: '📮 Обратная связь', callback_data: 'feedback' }]
+        ]
+      }
+    });
+  } else {
+    await bot.sendMessage(chatId, aboutText, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🚀 Начать пользоваться', callback_data: 'main_menu' }],
+          [{ text: '📮 Обратная связь', callback_data: 'feedback' }]
+        ]
+      }
+    });
+  }
+}
+
+// Обработка обратной связи
+async function processFeedback(userId, feedbackType, text) {
+  try {
+    const user = await dbGet('SELECT age, gender, occupation FROM users WHERE id = ?', [userId]);
+    
+    const typeEmojis = {
+      'suggestion': '💡',
+      'bug': '🐞',
+      'general': '📝'
+    };
+    
+    const typeNames = {
+      'suggestion': 'Предложение по улучшению',
+      'bug': 'Сообщение об ошибке', 
+      'general': 'Общий отзыв'
+    };
+    
+    const userInfo = user ? 
+      `👤 *От:* ${user.age || '?'} лет, ${user.gender}, ${user.occupation || 'сфера не указана'}\n` :
+      '👤 *От:* Пользователь без профиля\n';
+    
+    const feedbackMessage = `${typeEmojis[feedbackType]} *${typeNames[feedbackType]}*\n\n` +
+      `📋 *Текст:* ${text}\n\n` +
+      userInfo +
+      `🆔 *User ID:* ${userId}\n` +
+      `📅 *Время:* ${new Date().toLocaleString('ru-RU')}`;
+
+    // Отправляем в канал обратной связи
+    try {
+      await bot.sendMessage(FEEDBACK_CONFIG.channelId, feedbackMessage, {
+        parse_mode: 'Markdown'
+      });
+      console.log(`✅ Обратная связь отправлена в канал ${FEEDBACK_CONFIG.channelId}`);
+    } catch (error) {
+      console.error('❌ Ошибка отправки в канал обратной связи:', error);
+    }
+    
+    // Уведомляем администраторов
+    for (const adminId of FEEDBACK_CONFIG.adminIds) {
+      try {
+        await bot.sendMessage(adminId, feedbackMessage, {
+          parse_mode: 'Markdown'
+        });
+        console.log(`✅ Уведомление отправлено администратору ${adminId}`);
+      } catch (error) {
+        console.error(`❌ Не удалось отправить уведомление администратору ${adminId}:`, error);
+      }
+    }
+    
+    await bot.sendMessage(userId, `✅ *Спасибо за вашу обратную связь!*\n\nМы ценим ваше мнение и обязательно рассмотрим ваше ${typeNames[feedbackType].toLowerCase()}.`, {
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '↩️ На главную', callback_data: 'main_menu' }]
+        ]
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Ошибка при обработке обратной связи:', error);
+    await bot.sendMessage(userId, '❌ Произошла ошибка при отправке обратной связи. Попробуйте позже.');
+  }
 }
 
 // Приветственное сообщение
@@ -260,6 +391,7 @@ bot.onText(/\/start/, async (msg) => {
     reply_markup: {
       inline_keyboard: [
         [{ text: '✨ Подробнее о сервисе', callback_data: 'learn_more' }],
+        [{ text: '🌟 О проекте', callback_data: 'about_project' }],
         [{ text: '🚀 Начать пользоваться', callback_data: 'start_using' }]
       ]
     }
@@ -310,6 +442,46 @@ bot.on('callback_query', async (query) => {
             [{ text: '↩️ Назад', callback_data: 'learn_more' }]
           ]
         }
+      });
+      return;
+    }
+
+    // О проекте
+    if (data === 'about_project') {
+      await showAboutProject(chatId, messageId);
+      return;
+    }
+
+    // Обратная связь
+    if (data === 'feedback') {
+      userStates[chatId] = { step: 'asking_feedback_type' };
+      await bot.sendMessage(chatId, `📮 *Обратная связь*\n\nЧто вы хотите отправить?`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💡 Предложение по улучшению', callback_data: 'feedback_suggestion' }],
+            [{ text: '🐞 Сообщить об ошибке', callback_data: 'feedback_bug' }],
+            [{ text: '📝 Общий отзыв', callback_data: 'feedback_general' }],
+            [{ text: '↩️ Назад', callback_data: 'main_menu' }]
+          ]
+        }
+      });
+      return;
+    }
+
+    // Выбор типа обратной связи
+    if (data.startsWith('feedback_')) {
+      const feedbackType = data.split('_')[1];
+      userStates[chatId] = { step: 'asking_feedback_text', feedbackType };
+      
+      const typeTexts = {
+        'suggestion': '💡 предложение по улучшению',
+        'bug': '🐞 сообщение об ошибке', 
+        'general': '📝 общий отзыв'
+      };
+      
+      await bot.sendMessage(chatId, `📝 *Напишите ваше ${typeTexts[feedbackType]}:*\n\nОпишите подробно, что вы хотите сообщить:`, {
+        parse_mode: 'Markdown'
       });
       return;
     }
@@ -514,6 +686,13 @@ bot.on('message', async (msg) => {
           ]
         }
       });
+      return;
+    }
+
+    // Обратная связь
+    if (userStates[chatId] && userStates[chatId].step === 'asking_feedback_text') {
+      await processFeedback(chatId, userStates[chatId].feedbackType, text);
+      delete userStates[chatId];
       return;
     }
 
