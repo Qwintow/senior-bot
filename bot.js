@@ -41,6 +41,7 @@ const EXPERTISE_CATEGORIES = [
   '✈️ Путешествия и туризм',
   '🎯 Другое'
 ];
+
 // Сферы деятельности
 const OCCUPATIONS = [
   'IT и технологии',
@@ -78,6 +79,7 @@ const REMINDERS = {
     "💡 Ваш прошлый совет кому-то очень помог - может, поможете еще раз?"
   ]
 };
+
 // Onboarding последовательность
 const ONBOARDING = [
   { day: 1, text: "👋 *День 1:* Вы стали частью сообщества 'Спроси у старшего'! Здесь вы можете получить советы по любым жизненным вопросам от реальных людей с опытом." },
@@ -169,6 +171,7 @@ db.serialize(() => {
   
   console.log('✅ База данных готова!');
 });
+
 // Вспомогательные функции
 function dbGet(query, params = []) {
   return new Promise((resolve, reject) => {
@@ -219,6 +222,9 @@ async function formatUserProfile(userId) {
 
 const userStates = {};
 
+// Защита от двойных нажатий
+const processingCallbacks = new Set();
+
 // Главное меню
 function showMainMenu(chatId) {
   bot.sendMessage(chatId, `🎯 *Главное меню "Спроси у старшего"*\n\nВыберите действие:`, {
@@ -234,6 +240,7 @@ function showMainMenu(chatId) {
     }
   });
 }
+
 // Приветственное сообщение
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
@@ -254,7 +261,16 @@ bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
   const messageId = query.message.message_id;
-
+  
+  // Защита от двойных нажатий
+  const callbackKey = `${chatId}_${data}_${messageId}`;
+  if (processingCallbacks.has(callbackKey)) {
+    await bot.answerCallbackQuery(query.id, { text: '⏳ Обрабатываю ваш запрос...' });
+    return;
+  }
+  
+  processingCallbacks.add(callbackKey);
+  
   try {
     // Уровень 2 - подробности о сервисе
     if (data === 'learn_more') {
@@ -333,7 +349,8 @@ bot.on('callback_query', async (query) => {
       });
       return;
     }
-        // Выбор категории для вопроса
+
+    // Выбор категории для вопроса
     if (data.startsWith('ask_cat_')) {
       const categoryIndex = parseInt(data.split('_')[2]);
       const category = EXPERTISE_CATEGORIES[categoryIndex];
@@ -418,6 +435,11 @@ bot.on('callback_query', async (query) => {
   } catch (error) {
     console.error('❌ Ошибка в обработчике callback:', error);
     await bot.sendMessage(chatId, '❌ Произошла ошибка. Попробуйте снова.');
+  } finally {
+    // Удаляем из множества обработки через 2 секунды
+    setTimeout(() => {
+      processingCallbacks.delete(callbackKey);
+    }, 2000);
   }
 });
 
@@ -501,7 +523,7 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Обработка выбора пола
+// Обработка выбора пола и сферы деятельности
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
@@ -602,7 +624,7 @@ async function showExpertiseSelection(chatId, isFirstTime = false) {
   }
 }
 
-// Переключение категории - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Переключение категории
 async function toggleExpertiseCategory(chatId, categoryIndex, messageId) {
   console.log(`🔄 Переключение категории ${categoryIndex} для пользователя ${chatId}`);
   
@@ -677,7 +699,7 @@ async function toggleExpertiseCategory(chatId, categoryIndex, messageId) {
   }
 }
 
-// Сохранение категорий - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Сохранение категорий
 async function saveExpertiseCategories(chatId, messageId) {
   console.log(`💾 Сохранение категорий для пользователя ${chatId}`);
   
@@ -887,7 +909,7 @@ async function processQuestion(askerId, questionText, category) {
   }
 }
 
-// Показ доступных вопросов
+// Показ доступных вопросов - ИСПРАВЛЕННАЯ ВЕРСИЯ
 async function showAvailableQuestions(chatId) {
   const user = await dbGet('SELECT expertises FROM users WHERE id = ?', [chatId]);
   
@@ -899,15 +921,17 @@ async function showAvailableQuestions(chatId) {
   const expertises = user.expertises.split(', ');
   const placeholders = expertises.map(() => '?').join(', ');
   
+  // ИСПРАВЛЕННЫЙ ЗАПРОС - правильно фильтрует отвеченные вопросы
   const questions = await dbAll(`
-    SELECT DISTINCT q.id, q.text, q.category, u.age, u.gender, u.occupation 
+    SELECT q.id, q.text, q.category, u.age, u.gender, u.occupation 
     FROM questions q 
     LEFT JOIN users u ON q.user_id = u.id 
-    LEFT JOIN answers a ON q.id = a.question_id AND a.user_id = ?
     WHERE q.category IN (${placeholders}) 
     AND q.status = 'active' 
     AND q.user_id != ?
-    AND a.id IS NULL  -- Не показывать вопросы, на которые уже ответили
+    AND q.id NOT IN (
+      SELECT question_id FROM answers WHERE user_id = ?
+    )
     ORDER BY q.created_at DESC 
     LIMIT 10
   `, [...expertises, chatId, chatId]);
