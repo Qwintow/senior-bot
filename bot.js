@@ -1,6 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+require('dotenv').config();
 
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 const dbPath = path.join(__dirname, 'database.sqlite');
@@ -151,6 +152,15 @@ db.serialize(() => {
     rating INTEGER DEFAULT 0,
     reputation_earned INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  
+  db.run(`CREATE TABLE IF NOT EXISTS answer_ratings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    answer_id INTEGER,
+    user_id INTEGER,
+    rating_type TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(answer_id, user_id)
   )`);
   
   db.run(`CREATE TABLE IF NOT EXISTS user_reminders (
@@ -1019,7 +1029,7 @@ async function processAnswer(userId, questionId, answerText) {
   }
 }
 
-// Оценка ответа
+// Оценка ответа - ИСПРАВЛЕННАЯ ВЕРСИЯ
 async function rateAnswer(raterId, answerId, ratingType) {
   try {
     const ratingConfig = REPUTATION_SYSTEM.ratings[ratingType];
@@ -1028,9 +1038,23 @@ async function rateAnswer(raterId, answerId, ratingType) {
       return;
     }
     
+    // Проверяем, не оценивал ли пользователь уже этот ответ
+    const existingRating = await dbGet(
+      'SELECT id FROM answer_ratings WHERE answer_id = ? AND user_id = ?',
+      [answerId, raterId]
+    );
+    
+    if (existingRating) {
+      await bot.answerCallbackQuery({ 
+        text: '❌ Вы уже оценили этот ответ!', 
+        show_alert: true 
+      });
+      return;
+    }
+    
     // Получаем информацию об ответе
     const answer = await dbGet(`
-      SELECT a.user_id, a.text, a.rating, q.text as question_text 
+      SELECT a.user_id, a.text, a.rating, q.text as question_text, q.user_id as question_author_id
       FROM answers a 
       LEFT JOIN questions q ON a.question_id = q.id 
       WHERE a.id = ?
@@ -1041,6 +1065,21 @@ async function rateAnswer(raterId, answerId, ratingType) {
       return;
     }
     
+    // Проверяем, что оценивает автор вопроса (а не случайный пользователь)
+    if (answer.question_author_id !== raterId) {
+      await bot.answerCallbackQuery({ 
+        text: '❌ Только автор вопроса может оценивать ответы!', 
+        show_alert: true 
+      });
+      return;
+    }
+    
+    // Записываем оценку
+    await dbRun(
+      'INSERT INTO answer_ratings (answer_id, user_id, rating_type) VALUES (?, ?, ?)',
+      [answerId, raterId, ratingType]
+    );
+    
     // Обновляем репутацию отвечающего
     await dbRun(
       'UPDATE users SET reputation_points = reputation_points + ? WHERE id = ?',
@@ -1049,7 +1088,7 @@ async function rateAnswer(raterId, answerId, ratingType) {
     
     // Обновляем рейтинг ответа
     await dbRun(
-      'UPDATE answers SET rating = rating + 1, reputation_earned = ? WHERE id = ?',
+      'UPDATE answers SET rating = rating + 1, reputation_earned = reputation_earned + ? WHERE id = ?',
       [ratingConfig.points, answerId]
     );
     
@@ -1059,7 +1098,10 @@ async function rateAnswer(raterId, answerId, ratingType) {
       parse_mode: 'Markdown'
     });
     
-    await bot.answerCallbackQuery({ text: `✅ Вы оценили ответ как: ${ratingConfig.text}`, show_alert: true });
+    await bot.answerCallbackQuery({ 
+      text: `✅ Вы оценили ответ как: ${ratingConfig.text}`, 
+      show_alert: true 
+    });
     
   } catch (error) {
     console.error('❌ Ошибка при оценке ответа:', error);
