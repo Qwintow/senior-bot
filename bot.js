@@ -26,15 +26,15 @@ const REPUTATION_SYSTEM = {
 
 // Конфигурация обратной связи
 const FEEDBACK_CONFIG = {
-  channelId: -1002706262195, // ID приватного канала для обратной связи
-  adminIds: [79216220] // ТОЛЬКО ВАШ ID
+  channelId: -1002706262195,
+  adminIds: [79216220] // ТОЛЬКО ТВОЙ ID
 };
 
-// Конфигурация вопросов (УБРАНЫ ВСЕ ОГРАНИЧЕНИЯ)
+// Конфигурация вопросов
 const QUESTION_CONFIG = {
-  maxAnswers: 100, // Большое число вместо ограничения
-  activeDays: 30, // Увеличено время активности
-  minAnswersForCompletion: 1 // Минимум для завершения
+  maxAnswers: 100,
+  activeDays: 30,
+  minAnswersForCompletion: 1
 };
 
 // Категории экспертизы
@@ -94,39 +94,17 @@ const REMINDERS = {
   ]
 };
 
-// Onboarding последовательность
+// Onboarding
 const ONBOARDING = [
   { day: 1, text: "👋 *День 1:* Вы стали частью сообщества 'Спроси у старшего'! Здесь вы можете получить советы по любым жизненным вопросам от реальных людей с опытом." },
-  { day: 2, text: "💡 *День 2:* Помните - вы можете не только спрашивать, но и помогать другими своим опытом! Даже один ваш совет может изменить чью-то жизнь." },
+  { day: 2, text: "💡 *День 2:* Помните - вы можете не только спрашивать, но и помогать другим своим опытом! Даже один ваш совет может изменить чью-то жизнь." },
   { day: 3, text: "🌱 *День 3:* Сообщество растет благодаря таким как вы! Не стесняйтесь задавать вопросы - здесь вас точно поймут и поддержат." }
 ];
 
 // Правила сервиса
 const RULES = {
-  short: `❗ *ПРАВИЛА СЕРВИСА*
-• 🔒 Полная анонимность - не указываем ФИО, контакты
-• 💙 Уважаем друг друга
-• 📚 Советы носят рекомендательный характер
-• 🚫 Запрещены оскорбления и спам`,
-  
-  detailed: `📜 *ПОЛОЖЕНИЕ О КОНФИДЕНЦИАЛЬНОСТИ*
-
-*1. АНОНИМНОСТЬ*
-Сервис не собирает и не хранит персональные данные, позволяющие идентифицировать личность. Все общение полностью анонимно.
-
-*2. ЦЕЛИ ОБРАБОТКИ ДАННЫХ*
-Возраст, пол и сфера деятельности собираются исключительно для улучшения качества рекомендаций и не являются персональными данными согласно 152-ФЗ.
-
-*3. ОТВЕТСТВЕННОСТЬ*
-Пользователи несут самостоятельную ответственность за содержание задаваемых вопросов и даваемых ответов.
-
-*4. ОГРАНИЧЕНИЕ ОТВЕТСТВЕННОСТИ*
-Администрация сервиса не несет ответственности за содержание советов и рекомендаций, полученных через сервис.
-
-*5. СОГЛАСИЕ*
-Используя сервис, вы подтверждаете согласие с данными правилами.
-
-*По вопросам:* Обращайтесь через бота`
+  short: `❗ *ПРАВИЛА СЕРВИСА*\n• 🔒 Полная анонимность\n• 💙 Уважаем друг друга\n• 📚 Советы носят рекомендательный характер\n• 🚫 Запрещены оскорбления и спам`,
+  detailed: `📜 *ПОЛОЖЕНИЕ О КОНФИДЕНЦИАЛЬНОСТИ*\n\n*1. АНОНИМНОСТЬ*\nСервис не собирает и не хранит персональные данные.\n\n*2. ЦЕЛИ ОБРАБОТКИ ДАННЫХ*\nВозраст, пол и сфера деятельности собираются для улучшения качества рекомендаций.\n\n*3. ОТВЕТСТВЕННОСТЬ*\nПользователи несут ответственность за содержание вопросов и ответов.\n\n*4. ОГРАНИЧЕНИЕ ОТВЕТСТВЕННОСТИ*\nАдминистрация не несет ответственности за содержание советов.\n\n*5. СОГЛАСИЕ*\nИспользуя сервис, вы подтверждаете согласие с правилами.`
 };
 
 // Создаем таблицы
@@ -236,7 +214,7 @@ function getReputationLevel(points) {
   return REPUTATION_SYSTEM.levels[0];
 }
 
-// Форматирование профиля пользователя для ответов
+// Форматирование профиля пользователя
 async function formatUserProfile(userId) {
   const user = await dbGet('SELECT age, gender, occupation, reputation_points FROM users WHERE id = ?', [userId]);
   if (!user) return '';
@@ -245,21 +223,13 @@ async function formatUserProfile(userId) {
   return `\n\n👤 *Совет от:* ${user.age || '?'} лет, ${user.gender}, ${user.occupation || 'сфера не указана'} ${level.badge} ${level.name}`;
 }
 
-// Функция проверки и обновления статуса вопроса
+// Обновление статуса вопроса
 async function updateQuestionStatus(questionId) {
   try {
-    // Получаем текущее количество ответов
-    const answerCount = await dbGet(
-      'SELECT COUNT(*) as count FROM answers WHERE question_id = ?', 
-      [questionId]
-    );
+    const answerCount = await dbGet('SELECT COUNT(*) as count FROM answers WHERE question_id = ?', [questionId]);
     
     if (answerCount.count >= QUESTION_CONFIG.minAnswersForCompletion) {
-      // Если набрано достаточно ответов - закрываем вопрос
-      await dbRun(
-        'UPDATE questions SET status = "completed" WHERE id = ?', 
-        [questionId]
-      );
+      await dbRun('UPDATE questions SET status = "completed" WHERE id = ?', [questionId]);
       console.log(`✅ Вопрос ${questionId} завершен (${answerCount.count} ответов)`);
     }
   } catch (error) {
@@ -267,39 +237,9 @@ async function updateQuestionStatus(questionId) {
   }
 }
 
-// Функция "О проекте"
+// О проекте
 async function showAboutProject(chatId, messageId = null) {
-  const aboutText = `🌟 *О проекте "Спроси у старшего"*
-
-*🎯 Наша миссия:*
-Создать безопасное пространство, где каждый может получить мудрый совет от опытных людей по любым жизненным вопросам.
-
-*🤔 Для кого этот проект:*
-• Для тех, кто столкнулся с сложным выбором
-• Для тех, кому нужен взгляд со стороны
-• Для тех, кто хочет помочь другим своим опытом
-• Для тех, кто ценит анонимность и безопасность
-
-*💫 Что мы предлагаем:*
-• 🔒 *Полная анонимность* - никаких личных данных
-• 🧠 *Множество мнений* - ваш вопрос увидят разные эксперты  
-• 💡 *Практические советы* - от реальных людей с опытом
-• 🌱 *Система репутации* - находите самых helpful советчиков
-
-*📊 Как это работает:*
-1. Задаете вопрос → выбираете категорию
-2. Вопрос получают "Старшие" из этой сферы
-3. Вы получаете 3-5 разных ответов с мнениями
-4. Оцениваете самые полезные советы
-
-*🎭 Примеры вопросов:*
-• "Как сменить профессию в 35 лет?"
-• "Как наладить отношения с подростком?" 
-• "Стоит ли брать ипотеку в текущей ситуации?"
-• "Как справиться с выгоранием на работе?"
-
-*🤝 Присоединяйтесь к сообществу!*
-Здесь ваш опыт может изменить чью-то жизнь к лучшему.`;
+  const aboutText = `🌟 *О проекте "Спроси у старшего"*\n\n*🎯 Наша миссия:*\nСоздать безопасное пространство для мудрых советов.\n\n*🤔 Для кого:*\n• Для тех, кто столкнулся с сложным выбором\n• Для тех, кому нужен взгляд со стороны\n• Для тех, кто хочет помочь другим\n\n*💫 Что предлагаем:*\n• 🔒 Полная анонимность\n• 🧠 Множество мнений\n• 💡 Практические советы\n• 🌱 Система репутации`;
 
   if (messageId) {
     await bot.editMessageText(aboutText, {
@@ -326,80 +266,53 @@ async function showAboutProject(chatId, messageId = null) {
   }
 }
 
-// Обработка обратной связи
+// Обратная связь
 async function processFeedback(userId, feedbackType, text) {
   try {
     const user = await dbGet('SELECT age, gender, occupation FROM users WHERE id = ?', [userId]);
     
-    const typeEmojis = {
-      'suggestion': '💡',
-      'bug': '🐞',
-      'general': '📝'
-    };
+    const typeEmojis = { 'suggestion': '💡', 'bug': '🐞', 'general': '📝' };
+    const typeNames = { 'suggestion': 'Предложение', 'bug': 'Ошибка', 'general': 'Отзыв' };
     
-    const typeNames = {
-      'suggestion': 'Предложение по улучшению',
-      'bug': 'Сообщение об ошибке', 
-      'general': 'Общий отзыв'
-    };
+    const userInfo = user ? `👤 *От:* ${user.age || '?'} лет, ${user.gender}, ${user.occupation || 'сфера не указана'}\n` : '👤 *От:* Пользователь без профиля\n';
     
-    const userInfo = user ? 
-      `👤 *От:* ${user.age || '?'} лет, ${user.gender}, ${user.occupation || 'сфера не указана'}\n` :
-      '👤 *От:* Пользователь без профиля\n';
-    
-    const feedbackMessage = `${typeEmojis[feedbackType]} *${typeNames[feedbackType]}*\n\n` +
-      `📋 *Текст:* ${text}\n\n` +
-      userInfo +
-      `🆔 *User ID:* ${userId}\n` +
-      `📅 *Время:* ${new Date().toLocaleString('ru-RU')}`;
+    const feedbackMessage = `${typeEmojis[feedbackType]} *${typeNames[feedbackType]}*\n\n📋 *Текст:* ${text}\n\n${userInfo}🆔 *User ID:* ${userId}\n📅 *Время:* ${new Date().toLocaleString('ru-RU')}`;
 
-    // Отправляем в канал обратной связи
+    // Отправляем в канал
     try {
-      await bot.sendMessage(FEEDBACK_CONFIG.channelId, feedbackMessage, {
-        parse_mode: 'Markdown'
-      });
-      console.log(`✅ Обратная связь отправлена в канал ${FEEDBACK_CONFIG.channelId}`);
+      await bot.sendMessage(FEEDBACK_CONFIG.channelId, feedbackMessage, { parse_mode: 'Markdown' });
     } catch (error) {
-      console.error('❌ Ошибка отправки в канал обратной связи:', error);
+      console.error('❌ Ошибка отправки в канал:', error);
     }
     
     // Уведомляем администраторов
     for (const adminId of FEEDBACK_CONFIG.adminIds) {
       try {
-        await bot.sendMessage(adminId, feedbackMessage, {
-          parse_mode: 'Markdown'
-        });
-        console.log(`✅ Уведомление отправлено администратору ${adminId}`);
+        await bot.sendMessage(adminId, feedbackMessage, { parse_mode: 'Markdown' });
       } catch (error) {
-        console.error(`❌ Не удалось отправить уведомление администратору ${adminId}:`, error);
+        console.error(`❌ Не удалось отправить администратору ${adminId}:`, error);
       }
     }
     
-    await bot.sendMessage(userId, `✅ *Спасибо за вашу обратную связь!*\n\nМы ценим ваше мнение и обязательно рассмотрим ваше ${typeNames[feedbackType].toLowerCase()}.`, {
+    await bot.sendMessage(userId, `✅ *Спасибо за обратную связь!*\n\nМы рассмотрим ваше ${typeNames[feedbackType].toLowerCase()}.`, {
       parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '↩️ На главную', callback_data: 'main_menu' }]
-        ]
-      }
+      reply_markup: { inline_keyboard: [[{ text: '↩️ На главную', callback_data: 'main_menu' }]] }
     });
     
   } catch (error) {
     console.error('❌ Ошибка при обработке обратной связи:', error);
-    await bot.sendMessage(userId, '❌ Произошла ошибка при отправке обратной связи. Попробуйте позже.');
+    await bot.sendMessage(userId, '❌ Произошла ошибка при отправке обратной связи.');
   }
 }
 
-// Функция статистики для администратора - ТОЛЬКО ДЛЯ ВАС
+// Статистика для администратора
 async function showAdminStats(chatId) {
   try {
-    // Проверяем, является ли пользователь администратором (ТОЛЬКО ВЫ)
     if (chatId !== 79216220) {
       await bot.sendMessage(chatId, '❌ У вас нет доступа к этой функции.');
       return;
     }
 
-    // Собираем статистику
     const totalUsers = await dbGet('SELECT COUNT(*) as count FROM users');
     const activeUsers = await dbGet('SELECT COUNT(*) as count FROM users WHERE is_resting = 0');
     const restingUsers = await dbGet('SELECT COUNT(*) as count FROM users WHERE is_resting = 1');
@@ -407,7 +320,6 @@ async function showAdminStats(chatId) {
     const totalQuestions = await dbGet('SELECT COUNT(*) as count FROM questions');
     const activeQuestions = await dbGet('SELECT COUNT(*) as count FROM questions WHERE status = "active" AND expires_at > datetime("now")');
     const completedQuestions = await dbGet('SELECT COUNT(*) as count FROM questions WHERE status = "completed"');
-    const expiredQuestions = await dbGet('SELECT COUNT(*) as count FROM questions WHERE status = "active" AND expires_at <= datetime("now")');
     
     const totalAnswers = await dbGet('SELECT COUNT(*) as count FROM answers');
     const totalRatings = await dbGet('SELECT COUNT(*) as count FROM answer_ratings');
@@ -415,24 +327,12 @@ async function showAdminStats(chatId) {
     const todayQuestions = await dbGet('SELECT COUNT(*) as count FROM questions WHERE created_at > datetime("now", "-1 day")');
     const todayAnswers = await dbGet('SELECT COUNT(*) as count FROM answers WHERE created_at > datetime("now", "-1 day")');
     
-    // Топ пользователей по репутации
-    const topUsers = await dbAll(`
-      SELECT id, reputation_points, answers_count, questions_count 
-      FROM users 
-      ORDER BY reputation_points DESC 
-      LIMIT 5
-    `);
+    // Топ пользователей
+    const topUsers = await dbAll('SELECT id, reputation_points, answers_count, questions_count FROM users ORDER BY reputation_points DESC LIMIT 5');
     
     // Популярные категории
-    const popularCategories = await dbAll(`
-      SELECT category, COUNT(*) as count 
-      FROM questions 
-      GROUP BY category 
-      ORDER BY count DESC 
-      LIMIT 5
-    `);
+    const popularCategories = await dbAll('SELECT category, COUNT(*) as count FROM questions GROUP BY category ORDER BY count DESC LIMIT 5');
 
-    // Формируем отчет
     let statsText = `📊 *СТАТИСТИКА СИСТЕМЫ*\n\n`;
     
     statsText += `👥 *Пользователи:*\n`;
@@ -444,7 +344,6 @@ async function showAdminStats(chatId) {
     statsText += `• Всего: ${totalQuestions.count}\n`;
     statsText += `• Активных: ${activeQuestions.count}\n`;
     statsText += `• Завершенных: ${completedQuestions.count}\n`;
-    statsText += `• Просроченных: ${expiredQuestions.count}\n`;
     statsText += `• Сегодня: ${todayQuestions.count}\n\n`;
     
     statsText += `💡 *Ответы и оценки:*\n`;
@@ -455,19 +354,17 @@ async function showAdminStats(chatId) {
     statsText += `🏆 *Топ пользователей:*\n`;
     topUsers.forEach((user, index) => {
       const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
-      statsText += `${medals[index]} ID:${user.id} - ${user.reputation_points} очков (${user.answers_count} ответов, ${user.questions_count} вопросов)\n`;
+      statsText += `${medals[index]} ID:${user.id} - ${user.reputation_points} очков\n`;
     });
     
     statsText += `\n📈 *Популярные категории:*\n`;
     popularCategories.forEach((cat, index) => {
       statsText += `${index + 1}. ${cat.category}: ${cat.count} вопросов\n`;
     });
-    
-    statsText += `\n⏰ *Обновлено:* ${new Date().toLocaleString('ru-RU')}`;
 
     await bot.sendMessage(chatId, statsText, {
       parse_mode: 'Markdown',
-            reply_markup: {
+      reply_markup: {
         inline_keyboard: [
           [{ text: '🔄 Обновить статистику', callback_data: 'admin_stats' }],
           [{ text: '📊 Детальная статистика', callback_data: 'admin_detailed_stats' }],
@@ -484,93 +381,14 @@ async function showAdminStats(chatId) {
   }
 }
 
-// Детальная статистика - ТОЛЬКО ДЛЯ ВАС
+// Детальная статистика
 async function showDetailedStats(chatId) {
   try {
     if (chatId !== 79216220) {
       await bot.sendMessage(chatId, '❌ У вас нет доступа к этой функции.');
       return;
     }
-// Функция рассылки сообщений пользователям
-async function broadcastMessage(adminId, messageText) {
-  try {
-    // Проверяем что это администратор
-    if (adminId !== 79216220) {
-      await bot.sendMessage(adminId, '❌ У вас нет доступа к этой функции.');
-      return;
-    }
 
-    // Получаем всех пользователей
-    const users = await dbAll('SELECT id FROM users');
-    
-    if (users.length === 0) {
-      await bot.sendMessage(adminId, '❌ Нет пользователей для рассылки.');
-      return;
-    }
-
-    let successCount = 0;
-    let failCount = 0;
-
-    // Отправляем сообщение каждому пользователю
-    for (const user of users) {
-      try {
-        await bot.sendMessage(user.id, `📢 *Сообщение от администратора:*\n\n${messageText}`, {
-          parse_mode: 'Markdown'
-        });
-        successCount++;
-        
-        // Небольшая задержка чтобы не превысить лимиты Telegram
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } catch (error) {
-        console.error(`❌ Не удалось отправить сообщение пользователю ${user.id}:`, error);
-        failCount++;
-      }
-    }
-
-    // Отчет администратору
-    await bot.sendMessage(adminId, 
-      `📊 *Отчет о рассылке:*\n\n` +
-      `✅ Успешно отправлено: ${successCount}\n` +
-      `❌ Не удалось отправить: ${failCount}\n` +
-      `👥 Всего пользователей: ${users.length}`,
-      { parse_mode: 'Markdown' }
-    );
-
-  } catch (error) {
-    console.error('❌ Ошибка при рассылке:', error);
-    await bot.sendMessage(adminId, '❌ Произошла ошибка при рассылке.');
-  }
-}
-
-// Функция отправки сообщения конкретному пользователю
-async function sendMessageToUser(adminId, userId, messageText) {
-  try {
-    // Проверяем что это администратор
-    if (adminId !== 79216220) {
-      await bot.sendMessage(adminId, '❌ У вас нет доступа к этой функции.');
-      return;
-    }
-
-    // Проверяем существование пользователя
-    const user = await dbGet('SELECT id FROM users WHERE id = ?', [userId]);
-    if (!user) {
-      await bot.sendMessage(adminId, '❌ Пользователь не найден.');
-      return;
-    }
-
-    // Отправляем сообщение
-    await bot.sendMessage(userId, `📢 *Сообщение от администратора:*\n\n${messageText}`, {
-      parse_mode: 'Markdown'
-    });
-
-    await bot.sendMessage(adminId, `✅ Сообщение отправлено пользователю ID: ${userId}`);
-
-  } catch (error) {
-    console.error('❌ Ошибка при отправке сообщения:', error);
-    await bot.sendMessage(adminId, `❌ Не удалось отправить сообщение пользователю ${userId}`);
-  }
-}
-    // Распределение по возрастам
     const ageStats = await dbAll(`
       SELECT 
         CASE 
@@ -587,23 +405,7 @@ async function sendMessageToUser(adminId, userId, messageText) {
       ORDER BY count DESC
     `);
 
-    // Распределение по полу
-    const genderStats = await dbAll(`
-      SELECT gender, COUNT(*) as count 
-      FROM users 
-      GROUP BY gender
-    `);
-
-    // Вопросы по дням (последние 7 дней)
-    const questionsByDay = await dbAll(`
-      SELECT 
-        date(created_at) as day,
-        COUNT(*) as count
-      FROM questions 
-      WHERE created_at > datetime('now', '-7 days')
-      GROUP BY day
-      ORDER BY day DESC
-    `);
+    const genderStats = await dbAll('SELECT gender, COUNT(*) as count FROM users GROUP BY gender');
 
     let detailedText = `📈 *ДЕТАЛЬНАЯ СТАТИСТИКА*\n\n`;
     
@@ -615,11 +417,6 @@ async function sendMessageToUser(adminId, userId, messageText) {
     detailedText += `\n🚻 *Распределение по полу:*\n`;
     genderStats.forEach(stat => {
       detailedText += `• ${stat.gender}: ${stat.count}\n`;
-    });
-    
-    detailedText += `\n📅 *Вопросы за последние 7 дней:*\n`;
-    questionsByDay.forEach(stat => {
-      detailedText += `• ${stat.day}: ${stat.count} вопросов\n`;
     });
 
     await bot.sendMessage(chatId, detailedText, {
@@ -637,14 +434,82 @@ async function sendMessageToUser(adminId, userId, messageText) {
   }
 }
 
-const userStates = {};
+// Функция рассылки сообщений пользователям
+async function broadcastMessage(adminId, messageText) {
+  try {
+    if (adminId !== 79216220) {
+      await bot.sendMessage(adminId, '❌ У вас нет доступа к этой функции.');
+      return;
+    }
 
-// Защита от двойных нажатий
+    const users = await dbAll('SELECT id FROM users');
+    if (users.length === 0) {
+      await bot.sendMessage(adminId, '❌ Нет пользователей для рассылки.');
+      return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const user of users) {
+      try {
+        await bot.sendMessage(user.id, `📢 *Сообщение от администратора:*\n\n${messageText}`, {
+          parse_mode: 'Markdown'
+        });
+        successCount++;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`❌ Не удалось отправить сообщение пользователю ${user.id}:`, error);
+        failCount++;
+      }
+    }
+
+    await bot.sendMessage(adminId, 
+      `📊 *Отчет о рассылке:*\n\n` +
+      `✅ Успешно отправлено: ${successCount}\n` +
+      `❌ Не удалось отправить: ${failCount}\n` +
+      `👥 Всего пользователей: ${users.length}`,
+      { parse_mode: 'Markdown' }
+    );
+
+  } catch (error) {
+    console.error('❌ Ошибка при рассылке:', error);
+    await bot.sendMessage(adminId, '❌ Произошла ошибка при рассылке.');
+  }
+}
+
+// Функция отправки сообщения конкретному пользователю
+async function sendMessageToUser(adminId, userId, messageText) {
+  try {
+    if (adminId !== 79216220) {
+      await bot.sendMessage(adminId, '❌ У вас нет доступа к этой функции.');
+      return;
+    }
+
+    const user = await dbGet('SELECT id FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      await bot.sendMessage(adminId, '❌ Пользователь не найден.');
+      return;
+    }
+
+    await bot.sendMessage(userId, `📢 *Сообщение от администратора:*\n\n${messageText}`, {
+      parse_mode: 'Markdown'
+    });
+
+    await bot.sendMessage(adminId, `✅ Сообщение отправлено пользователю ID: ${userId}`);
+
+  } catch (error) {
+    console.error('❌ Ошибка при отправке сообщения:', error);
+    await bot.sendMessage(adminId, `❌ Не удалось отправить сообщение пользователю ${userId}`);
+  }
+}
+
+const userStates = {};
 const processingCallbacks = new Set();
 
 // Главное меню
 function showMainMenu(chatId) {
-  const isAdmin = chatId === 79216220; // ТОЛЬКО ВЫ
+  const isAdmin = chatId === 79216220;
   
   const keyboard = [
     [{ text: '📝 Задать вопрос', callback_data: 'ask_question' }],
@@ -654,7 +519,6 @@ function showMainMenu(chatId) {
     [{ text: '📮 Обратная связь', callback_data: 'feedback' }]
   ];
 
-  // Добавляем админ-кнопку только для вас
   if (isAdmin) {
     keyboard.push([{ text: '👑 Статистика (админ)', callback_data: 'admin_stats' }]);
   }
@@ -666,9 +530,7 @@ function showMainMenu(chatId) {
 
   bot.sendMessage(chatId, `🎯 *Главное меню "Спроси у старшего"*\n\nВыберите действие:`, {
     parse_mode: 'Markdown',
-    reply_markup: {
-      inline_keyboard: keyboard
-    }
+    reply_markup: { inline_keyboard: keyboard }
   });
 }
 
@@ -676,7 +538,7 @@ function showMainMenu(chatId) {
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
   
-  await bot.sendMessage(chatId, `👋 Добро пожаловать в *"Спроси у старшего"*!\n\nАнонимное сообщество, где вы можете получить мудрые советы от опытных людей по любым жизненным вопросам.`, {
+  await bot.sendMessage(chatId, `👋 Добро пожаловать в *"Спроси у старшего"*!\n\nАнонимное сообщество для мудрых советов.`, {
     parse_mode: 'Markdown',
     reply_markup: {
       inline_keyboard: [
@@ -694,7 +556,6 @@ bot.on('callback_query', async (query) => {
   const data = query.data;
   const messageId = query.message.message_id;
   
-  // Защита от двойных нажатий
   const callbackKey = `${chatId}_${data}_${messageId}`;
   if (processingCallbacks.has(callbackKey)) {
     await bot.answerCallbackQuery(query.id, { text: '⏳ Обрабатываю ваш запрос...' });
@@ -714,6 +575,7 @@ bot.on('callback_query', async (query) => {
       await showDetailedStats(chatId);
       return;
     }
+
     // Рассылка сообщений
     if (data === 'admin_broadcast') {
       if (chatId !== 79216220) {
@@ -722,8 +584,7 @@ bot.on('callback_query', async (query) => {
       }
       userStates[chatId] = { step: 'admin_broadcast' };
       await bot.sendMessage(chatId, 
-        '📢 *Рассылка сообщений*\n\n' +
-        'Введите сообщение для рассылки всем пользователям:',
+        '📢 *Рассылка сообщений*\n\nВведите сообщение для рассылки всем пользователям:',
         { parse_mode: 'Markdown' }
       );
       return;
@@ -737,15 +598,15 @@ bot.on('callback_query', async (query) => {
       }
       userStates[chatId] = { step: 'admin_ask_user_id' };
       await bot.sendMessage(chatId, 
-        '👤 *Отправка сообщения пользователю*\n\n' +
-        'Введите ID пользователя:',
+        '👤 *Отправка сообщения пользователю*\n\nВведите ID пользователя:',
         { parse_mode: 'Markdown' }
       );
       return;
     }
+
     // Уровень 2 - подробности о сервисе
     if (data === 'learn_more') {
-      await bot.editMessageText(`💫 *Что такое "Спроси у старшего"?*\n\nЭто безопасное пространство, где:\n• 🤝 *Вы можете анонимно спросить* - о карьере, отношениях, финансах, воспитании детей\n• 💡 *Получить несколько мнений* - ваш вопрос увидят разные опытные люди\n• 🧠 *Делиться мудростью* - помогать другим своим опытом\n\n*Примеры реальных вопросов:*\n"Как сменить профессию в 35 лет?"\n"Как наладить отношения с подростком?"\n"Стоит ли брать ипотеку в текущей ситуации?"\n\n*Как это работает:*\n1. Задаете вопрос → выбираете категорию\n2. Вопрос получают несколько "Старших" из этой сферы\n3. Вы получаете 3-5 разных ответов с мнениями\n4. Можете оценить полезные советы\n\n🔒 *Полная анонимность гарантирована*`, {
+      await bot.editMessageText(`💫 *Что такое "Спроси у старшего"?*\n\nЭто безопасное пространство для мудрых советов!\n\n*Примеры вопросов:*\n"Как сменить профессию в 35 лет?"\n"Как наладить отношения с подростком?"\n"Стоит ли брать ипотеку?"\n\n🔒 *Полная анонимность гарантирована*`, {
         chat_id: chatId,
         message_id: messageId,
         parse_mode: 'Markdown',
@@ -821,7 +682,7 @@ bot.on('callback_query', async (query) => {
       
       if (!userExists) {
         userStates[chatId] = { step: 'creating_profile', profile: {} };
-        await bot.editMessageText(`🎯 *Отлично! Давайте создадим ваш профиль*\n\nЧтобы сообщество работало эффективно, расскажите немного о себе:\n\n*Ваш возраст* - чтобы понимать контекст советов\n*Сфера деятельности* - в чем вы можете помогать другим\n*Категории экспертизы* - какие темы вам близки\n\n⚠️ *Важно:* Мы не храним персональные данные! \nЭта информация нужна только для подбора релевантных вопросов и ответов.`, {
+        await bot.editMessageText(`🎯 *Отлично! Давайте создадим ваш профиль*\n\nРасскажите немного о себе для подбора релевантных вопросов.`, {
           chat_id: chatId,
           message_id: messageId,
           parse_mode: 'Markdown',
@@ -861,26 +722,16 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
-    // ВЫБОР КАТЕГОРИИ ДЛЯ ВОПРОСА - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // Выбор категории для вопроса
     if (data.startsWith('ask_cat_')) {
-      try {
-        const categoryIndex = parseInt(data.split('_')[2]);
-        const category = EXPERTISE_CATEGORIES[categoryIndex];
+      const categoryIndex = parseInt(data.split('_')[2]);
+      const category = EXPERTISE_CATEGORIES[categoryIndex];
+      
+      if (userStates[chatId] && userStates[chatId].step === 'asking_question_category') {
+        await processQuestion(chatId, userStates[chatId].questionText, category);
+        delete userStates[chatId];
         
-        console.log(`🎯 Выбрана категория: ${category} для пользователя ${chatId}`);
-        
-        if (userStates[chatId] && userStates[chatId].step === 'asking_question_category') {
-          await processQuestion(chatId, userStates[chatId].questionText, category);
-          delete userStates[chatId];
-          
-          await bot.deleteMessage(chatId, messageId);
-        } else {
-          console.error('❌ Неправильное состояние пользователя для выбора категории');
-          await bot.answerCallbackQuery(query.id, { text: '❌ Ошибка: состояние не найдено' });
-        }
-      } catch (error) {
-        console.error('❌ Ошибка при выборе категории:', error);
-        await bot.answerCallbackQuery(query.id, { text: '❌ Ошибка при выборе категории' });
+        await bot.deleteMessage(chatId, messageId);
       }
       return;
     }
@@ -946,28 +797,15 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
-    // ОЦЕНКА ОТВЕТА - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // Оценка ответа
     if (data.startsWith('rate_')) {
-      try {
-        const parts = data.split('_');
-        if (parts.length < 3) {
-          throw new Error('Неверный формат callback данных');
-        }
-        
-        const answerId = parseInt(parts[1]);
-        const rating = parts[2];
-        
-        console.log(`🎯 Оценка ответа: answerId=${answerId}, rating=${rating}, пользователь=${chatId}`);
-        
-        await rateAnswer(chatId, answerId, rating);
-        
-      } catch (error) {
-        console.error('❌ Ошибка в обработке оценки:', error);
-        await bot.answerCallbackQuery(query.id, { 
-          text: '❌ Ошибка при оценке ответа', 
-          show_alert: true 
-        });
-      }
+      const parts = data.split('_');
+      if (parts.length < 3) return;
+      
+      const answerId = parseInt(parts[1]);
+      const rating = parts[2];
+      
+      await rateAnswer(chatId, answerId, rating);
       return;
     }
 
@@ -975,7 +813,6 @@ bot.on('callback_query', async (query) => {
     console.error('❌ Ошибка в обработчике callback:', error);
     await bot.sendMessage(chatId, '❌ Произошла ошибка. Попробуйте снова.');
   } finally {
-    // Удаляем из множества обработки через 2 секунды
     setTimeout(() => {
       processingCallbacks.delete(callbackKey);
     }, 2000);
@@ -1014,7 +851,6 @@ bot.on('message', async (msg) => {
 
     // Создание профиля - пол (через callback)
     if (msg.text && userStates[chatId] && userStates[chatId].step === 'asking_gender') {
-      // Пол обрабатывается через callback, пропускаем
       return;
     }
 
@@ -1032,17 +868,15 @@ bot.on('message', async (msg) => {
       userStates[chatId].questionText = text;
       userStates[chatId].step = 'asking_question_category';
       
-      // ИСПРАВЛЕННЫЙ ВЫБОР КАТЕГОРИИ - правильные callback_data
-      const keyboard = EXPERTISE_CATEGORIES.map((cat, index) => [
-        { text: cat, callback_data: `ask_cat_${index}` }
-      ]);
-      
-      keyboard.push([{ text: '↩️ Назад', callback_data: 'main_menu' }]);
-      
       await bot.sendMessage(chatId, '📋 *Выберите категорию для вашего вопроса:*', {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: keyboard
+          inline_keyboard: [
+            ...EXPERTISE_CATEGORIES.map((cat, index) => [
+              { text: cat, callback_data: `ask_cat_${index}` }
+            ]),
+            [{ text: '↩️ Назад', callback_data: 'main_menu' }]
+          ]
         }
       });
       return;
@@ -1061,14 +895,15 @@ bot.on('message', async (msg) => {
       delete userStates[chatId];
       return;
     }
-    // Рассылка всем пользователям
+
+    // Рассылка всем пользователям (АДМИН)
     if (userStates[chatId] && userStates[chatId].step === 'admin_broadcast') {
       await broadcastMessage(chatId, text);
       delete userStates[chatId];
       return;
     }
 
-    // Запрос ID пользователя
+    // Запрос ID пользователя (АДМИН)
     if (userStates[chatId] && userStates[chatId].step === 'admin_ask_user_id') {
       const userId = parseInt(text);
       if (isNaN(userId)) {
@@ -1080,12 +915,13 @@ bot.on('message', async (msg) => {
       return;
     }
 
-    // Отправка сообщения конкретному пользователю
+    // Отправка сообщения конкретному пользователю (АДМИН)
     if (userStates[chatId] && userStates[chatId].step === 'admin_ask_message') {
       await sendMessageToUser(chatId, userStates[chatId].targetUserId, text);
       delete userStates[chatId];
       return;
     }
+
     // Если непонятное сообщение
     await bot.sendMessage(chatId, 'Используйте кнопки меню для навигации или /start для начала.');
 
@@ -1147,7 +983,6 @@ bot.on('callback_query', async (query) => {
   if (data === 'occupation_custom') {
     if (userStates[chatId] && userStates[chatId].step === 'asking_occupation') {
       await bot.sendMessage(chatId, '💼 *Напишите вашу сферу деятельности:*');
-      // Следующее сообщение пользователя будет обработано как сфера деятельности
     }
     return;
   }
@@ -1157,20 +992,15 @@ bot.on('callback_query', async (query) => {
 
 // Показ выбора категорий экспертизы
 async function showExpertiseSelection(chatId, isFirstTime = false) {
-  console.log(`🎯 Показ выбора категорий для пользователя ${chatId}`);
-  
   try {
     let currentExpertises = [];
     
-    // Получаем текущие категории
     if (userStates[chatId] && userStates[chatId].profile && userStates[chatId].profile.expertises) {
       currentExpertises = userStates[chatId].profile.expertises.split(', ');
     } else {
       const user = await dbGet('SELECT expertises FROM users WHERE id = ?', [chatId]);
       currentExpertises = user && user.expertises ? user.expertises.split(', ') : [];
     }
-    
-    console.log(`📋 Текущие категории пользователя: ${currentExpertises.join(', ')}`);
     
     const keyboard = EXPERTISE_CATEGORIES.map((cat, index) => [
       { 
@@ -1182,7 +1012,7 @@ async function showExpertiseSelection(chatId, isFirstTime = false) {
     keyboard.push([{ text: '💾 Сохранить категории', callback_data: 'save_categories' }]);
     
     const messageText = isFirstTime ? 
-      `🎯 *В каких категориях вы можете давать советы?*\n\n✅ Выбрано: ${currentExpertises.length} из 7 категорий\n\nНажимайте на категории для выбора/отмены (можно несколько):` :
+      `🎯 *В каких категориях вы можете давать советы?*\n\n✅ Выбрано: ${currentExpertises.length} из 7 категорий\n\nНажимайте на категории для выбора/отмены:` :
       `🎯 *Редактирование категорий экспертизы:*\n\n✅ Выбрано: ${currentExpertises.length} из 7 категорий\n\nНажимайте на категории для выбора/отмены:`;
     
     await bot.sendMessage(chatId, messageText, {
@@ -1192,41 +1022,30 @@ async function showExpertiseSelection(chatId, isFirstTime = false) {
     
   } catch (error) {
     console.error('❌ Ошибка при показе выбора категорий:', error);
-    await bot.sendMessage(chatId, '❌ Произошла ошибка при загрузке категорий. Попробуйте позже.');
+    await bot.sendMessage(chatId, '❌ Произошла ошибка при загрузке категорий.');
   }
 }
 
 // Переключение категории
 async function toggleExpertiseCategory(chatId, categoryIndex, messageId) {
-  console.log(`🔄 Переключение категории ${categoryIndex} для пользователя ${chatId}`);
-  
   try {
     const category = EXPERTISE_CATEGORIES[categoryIndex];
     
-    // Получаем текущие категории пользователя
     const user = await dbGet('SELECT expertises FROM users WHERE id = ?', [chatId]);
     let currentExpertises = [];
     
     if (user && user.expertises) {
       currentExpertises = user.expertises.split(', ');
     } else if (userStates[chatId] && userStates[chatId].profile) {
-      // Если профиль создается, берем из временного состояния
       currentExpertises = userStates[chatId].profile.expertises ? 
         userStates[chatId].profile.expertises.split(', ') : [];
     }
     
-    console.log(`📋 Текущие категории: ${currentExpertises.join(', ')}`);
-    
-    // Добавляем или удаляем категорию
     if (currentExpertises.includes(category)) {
-      // Удаляем категорию
       currentExpertises = currentExpertises.filter(cat => cat !== category);
-      console.log(`❌ Удалена категория: ${category}`);
     } else {
-      // Добавляем категорию (проверяем лимит)
       if (currentExpertises.length < 7) {
         currentExpertises.push(category);
-        console.log(`✅ Добавлена категория: ${category}`);
       } else {
         await bot.answerCallbackQuery({ 
           text: '❌ Можно выбрать не более 7 категорий!', 
@@ -1236,14 +1055,12 @@ async function toggleExpertiseCategory(chatId, categoryIndex, messageId) {
       }
     }
     
-    // Сохраняем во временное состояние или в базу
     if (userStates[chatId] && userStates[chatId].profile) {
       userStates[chatId].profile.expertises = currentExpertises.join(', ');
     } else {
       await dbRun('UPDATE users SET expertises = ? WHERE id = ?', [currentExpertises.join(', '), chatId]);
     }
     
-    // Обновляем клавиатуру
     const keyboard = EXPERTISE_CATEGORIES.map((cat, index) => [
       { 
         text: currentExpertises.includes(cat) ? `✅ ${cat}` : cat, 
@@ -1273,20 +1090,15 @@ async function toggleExpertiseCategory(chatId, categoryIndex, messageId) {
 
 // Сохранение категорий
 async function saveExpertiseCategories(chatId, messageId) {
-  console.log(`💾 Сохранение категорий для пользователя ${chatId}`);
-  
   try {
     let currentExpertises = [];
     
-    // Получаем категории из временного состояния или из базы
     if (userStates[chatId] && userStates[chatId].profile && userStates[chatId].profile.expertises) {
       currentExpertises = userStates[chatId].profile.expertises.split(', ');
     } else {
       const user = await dbGet('SELECT expertises FROM users WHERE id = ?', [chatId]);
       currentExpertises = user && user.expertises ? user.expertises.split(', ') : [];
     }
-    
-    console.log(`📋 Категории для сохранения: ${currentExpertises.join(', ')}`);
     
     if (currentExpertises.length === 0) {
       await bot.answerCallbackQuery({ 
@@ -1297,11 +1109,9 @@ async function saveExpertiseCategories(chatId, messageId) {
     }
     
     if (userStates[chatId] && userStates[chatId].step === 'asking_expertise') {
-      // Завершение создания профиля
       userStates[chatId].profile.expertises = currentExpertises.join(', ');
       await completeProfileCreation(chatId);
     } else {
-      // Просто сохранение категорий
       await dbRun('UPDATE users SET expertises = ? WHERE id = ?', [currentExpertises.join(', '), chatId]);
       
       await bot.editMessageText(`✅ *Категории экспертизы сохранены!*\n\nВы выбрали ${currentExpertises.length} категорий:\n• ${currentExpertises.join('\n• ')}`, {
@@ -1310,7 +1120,6 @@ async function saveExpertiseCategories(chatId, messageId) {
         parse_mode: 'Markdown'
       });
       
-      // Даем небольшую паузу перед показом меню
       setTimeout(() => {
         showMainMenu(chatId);
       }, 1000);
@@ -1337,7 +1146,7 @@ async function completeProfileCreation(chatId) {
   
   delete userStates[chatId];
   
-  await bot.sendMessage(chatId, `🎉 *Профиль создан!*\n\nТеперь вы можете:\n• 📝 Задавать вопросы сообществу\n• 💡 Отвечать на вопросы в ваших категориях\n• 🌱 Зарабатывать репутацию\n\nДобро пожаловать в сообщество "Спроси у старшего"!`, {
+  await bot.sendMessage(chatId, `🎉 *Профиль создан!*\n\nТеперь вы можете задавать вопросы и помогать другим!`, {
     parse_mode: 'Markdown'
   });
   
@@ -1415,7 +1224,7 @@ async function editExpertiseCategories(chatId) {
 // Режим отдыха
 async function toggleRestMode(chatId) {
   await dbRun('UPDATE users SET is_resting = 1, rest_start_date = datetime("now") WHERE id = ?', [chatId]);
-  await bot.sendMessage(chatId, '🌴 *Вы вошли в режим отдыха!*\n\nВы не будете получать новые вопросы для ответа. Отдыхайте!\n\nМы напомним вам через 3 дня, если захотите вернуться.', {
+  await bot.sendMessage(chatId, '🌴 *Вы вошли в режим отдыха!*\n\nВы не будете получать новые вопросы для ответа.', {
     parse_mode: 'Markdown',
     reply_markup: {
       inline_keyboard: [
@@ -1428,11 +1237,9 @@ async function toggleRestMode(chatId) {
 
 // ==================== СИСТЕМА ВОПРОСОВ И ОТВЕТОВ ====================
 
-// Обработка вопроса - УБРАНЫ ОГРАНИЧЕНИЯ
+// Обработка вопроса
 async function processQuestion(askerId, questionText, category) {
   try {
-    // УБРАНА ПРОВЕРКА ЛИМИТА ВОПРОСОВ В ДЕНЬ
-    
     // Сохраняем вопрос
     const result = await dbRun(
       'INSERT INTO questions (user_id, text, category, expires_at) VALUES (?, ?, ?, datetime("now", "+30 days"))',
@@ -1442,14 +1249,14 @@ async function processQuestion(askerId, questionText, category) {
     // Увеличиваем счетчик вопросов
     await dbRun('UPDATE users SET questions_count = questions_count + 1 WHERE id = ?', [askerId]);
     
-    // Находим подходящих пользователей (не в режиме отдыха)
+    // Находим подходящих пользователей
     const experts = await dbAll(
       `SELECT id FROM users 
        WHERE expertises LIKE ? 
        AND is_resting = 0 
        AND id != ?
        ORDER BY reputation_points DESC 
-       LIMIT 50`, // Увеличено количество
+       LIMIT 50`,
       [`%${category}%`, askerId]
     );
     
@@ -1483,7 +1290,7 @@ async function processQuestion(askerId, questionText, category) {
   }
 }
 
-// Показ доступных вопросов - ИСПРАВЛЕННЫЙ SQL
+// Показ доступных вопросов
 async function showAvailableQuestions(chatId) {
   const user = await dbGet('SELECT expertises FROM users WHERE id = ?', [chatId]);
   
@@ -1537,7 +1344,7 @@ async function showAvailableQuestions(chatId) {
     }
   } catch (error) {
     console.error('❌ Ошибка при получении вопросов:', error);
-    await bot.sendMessage(chatId, '❌ Произошла ошибка при загрузке вопросов. Попробуйте позже.');
+    await bot.sendMessage(chatId, '❌ Произошла ошибка при загрузке вопросов.');
   }
 }
 
@@ -1550,16 +1357,14 @@ async function processAnswer(userId, questionId, answerText) {
       [questionId, userId, answerText]
     );
     
-    // Увеличиваем счетчик ответов
+    // Увеличиваем счетчики
     await dbRun('UPDATE users SET answers_count = answers_count + 1 WHERE id = ?', [userId]);
-    
-    // Увеличиваем счетчик ответов на вопросе
     await dbRun('UPDATE questions SET answer_count = answer_count + 1 WHERE id = ?', [questionId]);
     
-    // Проверяем, не пора ли закрыть вопрос
+    // Проверяем статус вопроса
     await updateQuestionStatus(questionId);
     
-    // Получаем информацию о вопросе и спрашивающем
+    // Получаем информацию о вопросе
     const question = await dbGet(`
       SELECT q.user_id, q.text, u.age, u.gender, u.occupation 
       FROM questions q 
@@ -1568,7 +1373,6 @@ async function processAnswer(userId, questionId, answerText) {
     `, [questionId]);
     
     if (question) {
-      // Получаем профиль отвечающего для форматирования
       const answererProfile = await formatUserProfile(userId);
       
       // Сначала отправляем ответ
@@ -1577,7 +1381,7 @@ async function processAnswer(userId, questionId, answerText) {
         { parse_mode: 'Markdown' }
       );
       
-      // Затем отдельным сообщением отправляем кнопки оценки (чтобы не протухали)
+      // Затем кнопки оценки
       await bot.sendMessage(question.user_id,
         `🎯 *Оцените полезность ответа:*`,
         {
@@ -1614,14 +1418,11 @@ async function processAnswer(userId, questionId, answerText) {
   }
 }
 
-// ОЦЕНКА ОТВЕТА - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Оценка ответа
 async function rateAnswer(raterId, answerId, ratingType) {
   try {
-    console.log(`🎯 Начало оценки: answerId=${answerId}, ratingType=${ratingType}, raterId=${raterId}`);
-    
     const ratingConfig = REPUTATION_SYSTEM.ratings[ratingType];
     if (!ratingConfig) {
-      console.error('❌ Неизвестный тип оценки:', ratingType);
       await bot.answerCallbackQuery({ text: '❌ Неизвестный тип оценки', show_alert: true });
       return;
     }
@@ -1633,7 +1434,6 @@ async function rateAnswer(raterId, answerId, ratingType) {
     );
     
     if (existingRating) {
-      console.log('❌ Пользователь уже оценил этот ответ');
       await bot.answerCallbackQuery({ 
         text: '❌ Вы уже оценили этот ответ!', 
         show_alert: true 
@@ -1650,16 +1450,12 @@ async function rateAnswer(raterId, answerId, ratingType) {
     `, [answerId]);
     
     if (!answer) {
-      console.error('❌ Ответ не найден:', answerId);
       await bot.answerCallbackQuery({ text: '❌ Ответ не найден', show_alert: true });
       return;
     }
     
-    console.log(`📊 Информация об ответе: автор вопроса=${answer.question_author_id}, оценивающий=${raterId}`);
-    
-    // Проверяем, что оценивает автор вопроса (а не случайный пользователь)
-    if (parseInt(answer.question_author_id) !== parseInt(raterId)) {
-      console.error('❌ Оценивает не автор вопроса');
+    // Проверяем, что оценивает автор вопроса
+    if (answer.question_author_id !== raterId) {
       await bot.answerCallbackQuery({ 
         text: '❌ Только автор вопроса может оценивать ответы!', 
         show_alert: true 
@@ -1685,8 +1481,6 @@ async function rateAnswer(raterId, answerId, ratingType) {
       [ratingConfig.points, answerId]
     );
     
-    console.log(`✅ Оценка записана: +${ratingConfig.points} репутации пользователю ${answer.user_id}`);
-    
     // Уведомляем отвечающего об оценке
     const raterProfile = await formatUserProfile(raterId);
     await bot.sendMessage(answer.user_id, 
@@ -1701,14 +1495,9 @@ async function rateAnswer(raterId, answerId, ratingType) {
       show_alert: false 
     });
     
-    console.log(`✅ Оценка завершена успешно`);
-    
   } catch (error) {
     console.error('❌ Ошибка при оценке ответа:', error);
-    await bot.answerCallbackQuery({ 
-      text: '❌ Ошибка при оценке ответа', 
-      show_alert: true 
-    });
+    await bot.answerCallbackQuery({ text: '❌ Ошибка при оценке', show_alert: true });
   }
 }
 
@@ -1731,7 +1520,7 @@ setInterval(async () => {
   } catch (error) {
     console.error('❌ Ошибка отправки напоминаний:', error);
   }
-}, 60000); // Каждую минуту (для теста)
+}, 60000);
 
 // Ежедневная очистка просроченных вопросов
 setInterval(async () => {
@@ -1745,6 +1534,6 @@ setInterval(async () => {
   } catch (error) {
     console.error('❌ Ошибка при очистке просроченных вопросов:', error);
   }
-}, 60 * 60 * 1000); // Каждый час
+}, 60 * 60 * 1000);
 
 console.log('🤖 Бот "Спроси у старшего" запущен со всеми функциями!');
