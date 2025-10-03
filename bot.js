@@ -27,17 +27,14 @@ const REPUTATION_SYSTEM = {
 // Конфигурация обратной связи
 const FEEDBACK_CONFIG = {
   channelId: -1002706262195, // ID приватного канала для обратной связи
-  adminIds: [404870437] // ID администраторов
+  adminIds: [79216220] // ТОЛЬКО ВАШ ID
 };
 
-// Конфигурация вопросов
+// Конфигурация вопросов (УБРАНЫ ВСЕ ОГРАНИЧЕНИЯ)
 const QUESTION_CONFIG = {
-  maxAnswers: 5, // Максимум ответов на вопрос
-  activeDays: 7, // Дней активности вопроса
-  maxNewUserQuestions: 3, // Максимум вопросов для нового пользователя
-  dailyDigestLimit: 2, // Максимум вопросов в ежедневной рассылке
-  minAnswersForCompletion: 3, // Минимум ответов для автоматического завершения
-  maxQuestionsPerDay: 3 // Максимум вопросов в день на пользователя
+  maxAnswers: 100, // Большое число вместо ограничения
+  activeDays: 30, // Увеличено время активности
+  minAnswersForCompletion: 1 // Минимум для завершения
 };
 
 // Категории экспертизы
@@ -100,7 +97,7 @@ const REMINDERS = {
 // Onboarding последовательность
 const ONBOARDING = [
   { day: 1, text: "👋 *День 1:* Вы стали частью сообщества 'Спроси у старшего'! Здесь вы можете получить советы по любым жизненным вопросам от реальных людей с опытом." },
-  { day: 2, text: "💡 *День 2:* Помните - вы можете не только спрашивать, но и помогать другим своим опытом! Даже один ваш совет может изменить чью-то жизнь." },
+  { day: 2, text: "💡 *День 2:* Помните - вы можете не только спрашивать, но и помогать другими своим опытом! Даже один ваш совет может изменить чью-то жизнь." },
   { day: 3, text: "🌱 *День 3:* Сообщество растет благодаря таким как вы! Не стесняйтесь задавать вопросы - здесь вас точно поймут и поддержат." }
 ];
 
@@ -393,11 +390,11 @@ async function processFeedback(userId, feedbackType, text) {
   }
 }
 
-// Функция статистики для администратора
+// Функция статистики для администратора - ТОЛЬКО ДЛЯ ВАС
 async function showAdminStats(chatId) {
   try {
-    // Проверяем, является ли пользователь администратором
-    if (!FEEDBACK_CONFIG.adminIds.includes(chatId)) {
+    // Проверяем, является ли пользователь администратором (ТОЛЬКО ВЫ)
+    if (chatId !== 79216220) {
       await bot.sendMessage(chatId, '❌ У вас нет доступа к этой функции.');
       return;
     }
@@ -485,10 +482,10 @@ async function showAdminStats(chatId) {
   }
 }
 
-// Детальная статистика
+// Детальная статистика - ТОЛЬКО ДЛЯ ВАС
 async function showDetailedStats(chatId) {
   try {
-    if (!FEEDBACK_CONFIG.adminIds.includes(chatId)) {
+    if (chatId !== 79216220) {
       await bot.sendMessage(chatId, '❌ У вас нет доступа к этой функции.');
       return;
     }
@@ -567,7 +564,7 @@ const processingCallbacks = new Set();
 
 // Главное меню
 function showMainMenu(chatId) {
-  const isAdmin = FEEDBACK_CONFIG.adminIds.includes(chatId);
+  const isAdmin = chatId === 79216220; // ТОЛЬКО ВЫ
   
   const keyboard = [
     [{ text: '📝 Задать вопрос', callback_data: 'ask_question' }],
@@ -577,7 +574,7 @@ function showMainMenu(chatId) {
     [{ text: '📮 Обратная связь', callback_data: 'feedback' }]
   ];
 
-  // Добавляем админ-кнопку только для администраторов
+  // Добавляем админ-кнопку только для вас
   if (isAdmin) {
     keyboard.push([{ text: '👑 Статистика (админ)', callback_data: 'admin_stats' }]);
   }
@@ -756,16 +753,26 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
-    // Выбор категории для вопроса
+    // ВЫБОР КАТЕГОРИИ ДЛЯ ВОПРОСА - ИСПРАВЛЕННАЯ ВЕРСИЯ
     if (data.startsWith('ask_cat_')) {
-      const categoryIndex = parseInt(data.split('_')[2]);
-      const category = EXPERTISE_CATEGORIES[categoryIndex];
-      
-      if (userStates[chatId] && userStates[chatId].step === 'asking_question_category') {
-        await processQuestion(chatId, userStates[chatId].questionText, category);
-        delete userStates[chatId];
+      try {
+        const categoryIndex = parseInt(data.split('_')[2]);
+        const category = EXPERTISE_CATEGORIES[categoryIndex];
         
-        await bot.deleteMessage(chatId, messageId);
+        console.log(`🎯 Выбрана категория: ${category} для пользователя ${chatId}`);
+        
+        if (userStates[chatId] && userStates[chatId].step === 'asking_question_category') {
+          await processQuestion(chatId, userStates[chatId].questionText, category);
+          delete userStates[chatId];
+          
+          await bot.deleteMessage(chatId, messageId);
+        } else {
+          console.error('❌ Неправильное состояние пользователя для выбора категории');
+          await bot.answerCallbackQuery(query.id, { text: '❌ Ошибка: состояние не найдено' });
+        }
+      } catch (error) {
+        console.error('❌ Ошибка при выборе категории:', error);
+        await bot.answerCallbackQuery(query.id, { text: '❌ Ошибка при выборе категории' });
       }
       return;
     }
@@ -831,10 +838,28 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
-    // Оценка ответа
+    // ОЦЕНКА ОТВЕТА - ИСПРАВЛЕННАЯ ВЕРСИЯ
     if (data.startsWith('rate_')) {
-      const [_, answerId, rating] = data.split('_');
-      await rateAnswer(chatId, parseInt(answerId), rating);
+      try {
+        const parts = data.split('_');
+        if (parts.length < 3) {
+          throw new Error('Неверный формат callback данных');
+        }
+        
+        const answerId = parseInt(parts[1]);
+        const rating = parts[2];
+        
+        console.log(`🎯 Оценка ответа: answerId=${answerId}, rating=${rating}, пользователь=${chatId}`);
+        
+        await rateAnswer(chatId, answerId, rating);
+        
+      } catch (error) {
+        console.error('❌ Ошибка в обработке оценки:', error);
+        await bot.answerCallbackQuery(query.id, { 
+          text: '❌ Ошибка при оценке ответа', 
+          show_alert: true 
+        });
+      }
       return;
     }
 
@@ -899,15 +924,17 @@ bot.on('message', async (msg) => {
       userStates[chatId].questionText = text;
       userStates[chatId].step = 'asking_question_category';
       
+      // ИСПРАВЛЕННЫЙ ВЫБОР КАТЕГОРИИ - правильные callback_data
+      const keyboard = EXPERTISE_CATEGORIES.map((cat, index) => [
+        { text: cat, callback_data: `ask_cat_${index}` }
+      ]);
+      
+      keyboard.push([{ text: '↩️ Назад', callback_data: 'main_menu' }]);
+      
       await bot.sendMessage(chatId, '📋 *Выберите категорию для вашего вопроса:*', {
         parse_mode: 'Markdown',
         reply_markup: {
-          inline_keyboard: [
-            ...EXPERTISE_CATEGORIES.map((cat, index) => [
-              { text: cat, callback_data: `ask_cat_${index}` }
-            ]),
-            [{ text: '↩️ Назад', callback_data: 'main_menu' }]
-          ]
+          inline_keyboard: keyboard
         }
       });
       return;
@@ -1269,26 +1296,14 @@ async function toggleRestMode(chatId) {
 
 // ==================== СИСТЕМА ВОПРОСОВ И ОТВЕТОВ ====================
 
-// Обработка вопроса
+// Обработка вопроса - УБРАНЫ ОГРАНИЧЕНИЯ
 async function processQuestion(askerId, questionText, category) {
   try {
-    // Проверяем лимит вопросов в день
-    const todayQuestions = await dbGet(
-      'SELECT COUNT(*) as count FROM questions WHERE user_id = ? AND created_at > datetime("now", "-1 day")',
-      [askerId]
-    );
-    
-    if (todayQuestions.count >= QUESTION_CONFIG.maxQuestionsPerDay) {
-      await bot.sendMessage(askerId, 
-        `❌ Вы уже задали максимальное количество вопросов за сегодня (${QUESTION_CONFIG.maxQuestionsPerDay}). Попробуйте завтра!`,
-        { reply_markup: { inline_keyboard: [[{ text: '↩️ На главную', callback_data: 'main_menu' }]] } }
-      );
-      return;
-    }
+    // УБРАНА ПРОВЕРКА ЛИМИТА ВОПРОСОВ В ДЕНЬ
     
     // Сохраняем вопрос
     const result = await dbRun(
-      'INSERT INTO questions (user_id, text, category, expires_at) VALUES (?, ?, ?, datetime("now", "+7 days"))',
+      'INSERT INTO questions (user_id, text, category, expires_at) VALUES (?, ?, ?, datetime("now", "+30 days"))',
       [askerId, questionText, category]
     );
     
@@ -1302,7 +1317,7 @@ async function processQuestion(askerId, questionText, category) {
        AND is_resting = 0 
        AND id != ?
        ORDER BY reputation_points DESC 
-       LIMIT 10`,
+       LIMIT 50`, // Увеличено количество
       [`%${category}%`, askerId]
     );
     
@@ -1336,7 +1351,7 @@ async function processQuestion(askerId, questionText, category) {
   }
 }
 
-// Показ доступных вопросов
+// Показ доступных вопросов - ИСПРАВЛЕННЫЙ SQL
 async function showAvailableQuestions(chatId) {
   const user = await dbGet('SELECT expertises FROM users WHERE id = ?', [chatId]);
   
@@ -1348,48 +1363,53 @@ async function showAvailableQuestions(chatId) {
   const expertises = user.expertises.split(', ');
   const placeholders = expertises.map(() => '?').join(', ');
   
-  const questions = await dbAll(`
-    SELECT q.id, q.text, q.category, u.age, u.gender, u.occupation 
-    FROM questions q 
-    LEFT JOIN users u ON q.user_id = u.id 
-    WHERE q.category IN (${placeholders}) 
-    AND q.status = 'active' 
-    AND q.expires_at > datetime('now')
-    AND q.answer_count < ?
-    AND q.user_id != ?
-    AND q.id NOT IN (
-      SELECT question_id FROM answers WHERE user_id = ?
-    )
-    ORDER BY q.created_at DESC 
-    LIMIT 10
-  `, [...expertises, QUESTION_CONFIG.maxAnswers, chatId, chatId]);
-  
-  if (questions.length === 0) {
-    await bot.sendMessage(chatId, '🤔 Пока нет новых вопросов в ваших категориях. Загляните позже!', {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '↩️ На главную', callback_data: 'main_menu' }]
-        ]
-      }
-    });
-    return;
-  }
-  
-  for (const question of questions) {
-    const askerProfile = `👤 *Спрашивает:* ${question.age || '?'} лет, ${question.gender || '?'}, ${question.occupation || 'сфера не указана'}`;
+  try {
+    const questions = await dbAll(`
+      SELECT q.id, q.text, q.category, u.age, u.gender, u.occupation 
+      FROM questions q 
+      LEFT JOIN users u ON q.user_id = u.id 
+      WHERE q.category IN (${placeholders}) 
+      AND q.status = 'active' 
+      AND q.expires_at > datetime('now')
+      AND q.answer_count < ?
+      AND q.user_id != ?
+      AND q.id NOT IN (
+        SELECT question_id FROM answers WHERE user_id = ?
+      )
+      ORDER BY q.created_at DESC 
+      LIMIT 10
+    `, [...expertises, QUESTION_CONFIG.maxAnswers, chatId, chatId]);
     
-    await bot.sendMessage(chatId, `📋 *Вопрос* (${question.category}):\n\n${question.text}\n\n${askerProfile}`, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '💡 Ответить', callback_data: `answer_${question.id}` }]
-        ]
-      }
-    });
+    if (questions.length === 0) {
+      await bot.sendMessage(chatId, '🤔 Пока нет новых вопросов в ваших категориях. Загляните позже!', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '↩️ На главную', callback_data: 'main_menu' }]
+          ]
+        }
+      });
+      return;
+    }
+    
+    for (const question of questions) {
+      const askerProfile = `👤 *Спрашивает:* ${question.age || '?'} лет, ${question.gender || '?'}, ${question.occupation || 'сфера не указана'}`;
+      
+      await bot.sendMessage(chatId, `📋 *Вопрос* (${question.category}):\n\n${question.text}\n\n${askerProfile}`, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '💡 Ответить', callback_data: `answer_${question.id}` }]
+          ]
+        }
+      });
+    }
+  } catch (error) {
+    console.error('❌ Ошибка при получении вопросов:', error);
+    await bot.sendMessage(chatId, '❌ Произошла ошибка при загрузке вопросов. Попробуйте позже.');
   }
 }
 
-// Обработка ответа - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Обработка ответа
 async function processAnswer(userId, questionId, answerText) {
   try {
     // Сохраняем ответ
@@ -1462,11 +1482,14 @@ async function processAnswer(userId, questionId, answerText) {
   }
 }
 
-// Оценка ответа - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// ОЦЕНКА ОТВЕТА - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ
 async function rateAnswer(raterId, answerId, ratingType) {
   try {
+    console.log(`🎯 Начало оценки: answerId=${answerId}, ratingType=${ratingType}, raterId=${raterId}`);
+    
     const ratingConfig = REPUTATION_SYSTEM.ratings[ratingType];
     if (!ratingConfig) {
+      console.error('❌ Неизвестный тип оценки:', ratingType);
       await bot.answerCallbackQuery({ text: '❌ Неизвестный тип оценки', show_alert: true });
       return;
     }
@@ -1478,6 +1501,7 @@ async function rateAnswer(raterId, answerId, ratingType) {
     );
     
     if (existingRating) {
+      console.log('❌ Пользователь уже оценил этот ответ');
       await bot.answerCallbackQuery({ 
         text: '❌ Вы уже оценили этот ответ!', 
         show_alert: true 
@@ -1494,12 +1518,16 @@ async function rateAnswer(raterId, answerId, ratingType) {
     `, [answerId]);
     
     if (!answer) {
+      console.error('❌ Ответ не найден:', answerId);
       await bot.answerCallbackQuery({ text: '❌ Ответ не найден', show_alert: true });
       return;
     }
     
+    console.log(`📊 Информация об ответе: автор вопроса=${answer.question_author_id}, оценивающий=${raterId}`);
+    
     // Проверяем, что оценивает автор вопроса (а не случайный пользователь)
-    if (answer.question_author_id !== raterId) {
+    if (parseInt(answer.question_author_id) !== parseInt(raterId)) {
+      console.error('❌ Оценивает не автор вопроса');
       await bot.answerCallbackQuery({ 
         text: '❌ Только автор вопроса может оценивать ответы!', 
         show_alert: true 
@@ -1525,20 +1553,30 @@ async function rateAnswer(raterId, answerId, ratingType) {
       [ratingConfig.points, answerId]
     );
     
+    console.log(`✅ Оценка записана: +${ratingConfig.points} репутации пользователю ${answer.user_id}`);
+    
     // Уведомляем отвечающего об оценке
     const raterProfile = await formatUserProfile(raterId);
-    await bot.sendMessage(answer.user_id, `🎉 *Ваш ответ получил оценку: ${ratingConfig.text}* (+${ratingConfig.points} репутации)\n\n*Ваш ответ:* ${answer.text}\n\n*Оценен за вопрос:* "${answer.question_text}"${raterProfile}`, {
+    await bot.sendMessage(answer.user_id, 
+      `🎉 *Ваш ответ получил оценку: ${ratingConfig.text}* (+${ratingConfig.points} репутации)\n\n` +
+      `*Ваш ответ:* ${answer.text}\n\n` +
+      `*Оценен за вопрос:* "${answer.question_text}"${raterProfile}`, {
       parse_mode: 'Markdown'
     });
     
     await bot.answerCallbackQuery({ 
       text: `✅ Вы оценили ответ как: ${ratingConfig.text}`, 
-      show_alert: true 
+      show_alert: false 
     });
+    
+    console.log(`✅ Оценка завершена успешно`);
     
   } catch (error) {
     console.error('❌ Ошибка при оценке ответа:', error);
-    await bot.answerCallbackQuery({ text: '❌ Ошибка при оценке', show_alert: true });
+    await bot.answerCallbackQuery({ 
+      text: '❌ Ошибка при оценке ответа', 
+      show_alert: true 
+    });
   }
 }
 
