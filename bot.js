@@ -467,10 +467,12 @@ async function showAdminStats(chatId) {
 
     await bot.sendMessage(chatId, statsText, {
       parse_mode: 'Markdown',
-      reply_markup: {
+            reply_markup: {
         inline_keyboard: [
           [{ text: '🔄 Обновить статистику', callback_data: 'admin_stats' }],
           [{ text: '📊 Детальная статистика', callback_data: 'admin_detailed_stats' }],
+          [{ text: '📢 Рассылка всем', callback_data: 'admin_broadcast' }],
+          [{ text: '👤 Сообщение пользователю', callback_data: 'admin_message_user' }],
           [{ text: '↩️ На главную', callback_data: 'main_menu' }]
         ]
       }
@@ -489,7 +491,85 @@ async function showDetailedStats(chatId) {
       await bot.sendMessage(chatId, '❌ У вас нет доступа к этой функции.');
       return;
     }
+// Функция рассылки сообщений пользователям
+async function broadcastMessage(adminId, messageText) {
+  try {
+    // Проверяем что это администратор
+    if (adminId !== 79216220) {
+      await bot.sendMessage(adminId, '❌ У вас нет доступа к этой функции.');
+      return;
+    }
 
+    // Получаем всех пользователей
+    const users = await dbAll('SELECT id FROM users');
+    
+    if (users.length === 0) {
+      await bot.sendMessage(adminId, '❌ Нет пользователей для рассылки.');
+      return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    // Отправляем сообщение каждому пользователю
+    for (const user of users) {
+      try {
+        await bot.sendMessage(user.id, `📢 *Сообщение от администратора:*\n\n${messageText}`, {
+          parse_mode: 'Markdown'
+        });
+        successCount++;
+        
+        // Небольшая задержка чтобы не превысить лимиты Telegram
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`❌ Не удалось отправить сообщение пользователю ${user.id}:`, error);
+        failCount++;
+      }
+    }
+
+    // Отчет администратору
+    await bot.sendMessage(adminId, 
+      `📊 *Отчет о рассылке:*\n\n` +
+      `✅ Успешно отправлено: ${successCount}\n` +
+      `❌ Не удалось отправить: ${failCount}\n` +
+      `👥 Всего пользователей: ${users.length}`,
+      { parse_mode: 'Markdown' }
+    );
+
+  } catch (error) {
+    console.error('❌ Ошибка при рассылке:', error);
+    await bot.sendMessage(adminId, '❌ Произошла ошибка при рассылке.');
+  }
+}
+
+// Функция отправки сообщения конкретному пользователю
+async function sendMessageToUser(adminId, userId, messageText) {
+  try {
+    // Проверяем что это администратор
+    if (adminId !== 79216220) {
+      await bot.sendMessage(adminId, '❌ У вас нет доступа к этой функции.');
+      return;
+    }
+
+    // Проверяем существование пользователя
+    const user = await dbGet('SELECT id FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      await bot.sendMessage(adminId, '❌ Пользователь не найден.');
+      return;
+    }
+
+    // Отправляем сообщение
+    await bot.sendMessage(userId, `📢 *Сообщение от администратора:*\n\n${messageText}`, {
+      parse_mode: 'Markdown'
+    });
+
+    await bot.sendMessage(adminId, `✅ Сообщение отправлено пользователю ID: ${userId}`);
+
+  } catch (error) {
+    console.error('❌ Ошибка при отправке сообщения:', error);
+    await bot.sendMessage(adminId, `❌ Не удалось отправить сообщение пользователю ${userId}`);
+  }
+}
     // Распределение по возрастам
     const ageStats = await dbAll(`
       SELECT 
@@ -634,7 +714,35 @@ bot.on('callback_query', async (query) => {
       await showDetailedStats(chatId);
       return;
     }
+    // Рассылка сообщений
+    if (data === 'admin_broadcast') {
+      if (chatId !== 79216220) {
+        await bot.sendMessage(chatId, '❌ У вас нет доступа к этой функции.');
+        return;
+      }
+      userStates[chatId] = { step: 'admin_broadcast' };
+      await bot.sendMessage(chatId, 
+        '📢 *Рассылка сообщений*\n\n' +
+        'Введите сообщение для рассылки всем пользователям:',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
 
+    // Отправка сообщения конкретному пользователю
+    if (data === 'admin_message_user') {
+      if (chatId !== 79216220) {
+        await bot.sendMessage(chatId, '❌ У вас нет доступа к этой функции.');
+        return;
+      }
+      userStates[chatId] = { step: 'admin_ask_user_id' };
+      await bot.sendMessage(chatId, 
+        '👤 *Отправка сообщения пользователю*\n\n' +
+        'Введите ID пользователя:',
+        { parse_mode: 'Markdown' }
+      );
+      return;
+    }
     // Уровень 2 - подробности о сервисе
     if (data === 'learn_more') {
       await bot.editMessageText(`💫 *Что такое "Спроси у старшего"?*\n\nЭто безопасное пространство, где:\n• 🤝 *Вы можете анонимно спросить* - о карьере, отношениях, финансах, воспитании детей\n• 💡 *Получить несколько мнений* - ваш вопрос увидят разные опытные люди\n• 🧠 *Делиться мудростью* - помогать другим своим опытом\n\n*Примеры реальных вопросов:*\n"Как сменить профессию в 35 лет?"\n"Как наладить отношения с подростком?"\n"Стоит ли брать ипотеку в текущей ситуации?"\n\n*Как это работает:*\n1. Задаете вопрос → выбираете категорию\n2. Вопрос получают несколько "Старших" из этой сферы\n3. Вы получаете 3-5 разных ответов с мнениями\n4. Можете оценить полезные советы\n\n🔒 *Полная анонимность гарантирована*`, {
@@ -953,7 +1061,31 @@ bot.on('message', async (msg) => {
       delete userStates[chatId];
       return;
     }
+    // Рассылка всем пользователям
+    if (userStates[chatId] && userStates[chatId].step === 'admin_broadcast') {
+      await broadcastMessage(chatId, text);
+      delete userStates[chatId];
+      return;
+    }
 
+    // Запрос ID пользователя
+    if (userStates[chatId] && userStates[chatId].step === 'admin_ask_user_id') {
+      const userId = parseInt(text);
+      if (isNaN(userId)) {
+        await bot.sendMessage(chatId, '❌ Введите корректный ID пользователя (только цифры):');
+        return;
+      }
+      userStates[chatId] = { step: 'admin_ask_message', targetUserId: userId };
+      await bot.sendMessage(chatId, 'Введите сообщение для этого пользователя:');
+      return;
+    }
+
+    // Отправка сообщения конкретному пользователю
+    if (userStates[chatId] && userStates[chatId].step === 'admin_ask_message') {
+      await sendMessageToUser(chatId, userStates[chatId].targetUserId, text);
+      delete userStates[chatId];
+      return;
+    }
     // Если непонятное сообщение
     await bot.sendMessage(chatId, 'Используйте кнопки меню для навигации или /start для начала.');
 
